@@ -12,6 +12,7 @@ library;
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:wireguard_flutter_plus/wireguard_flutter_platform_interface.dart';
@@ -60,6 +61,10 @@ class Vpn extends ChangeNotifier {
   VpnStage _stage = VpnStage.disconnected;
 
   WireGuardFlutterInterface get _wg => WireGuardFlutter.instance;
+
+  /// Android's "allow this VPN" question, asked by MainActivity. The plug-in asks it too but never hears the answer,
+  /// so the first press after an install waited forever (22 Oct 2026); asked here first, the plug-in finds it given.
+  static const _android = MethodChannel('nevermore/vpn');
 
   Future<void> load() async {
     final text = await _storage.read(key: 'vpn.conf');
@@ -113,14 +118,17 @@ class Vpn extends ChangeNotifier {
     country = null;
     notifyListeners();
     try {
-      await _init();
       // Android asks once to allow the VPN; only this app's traffic goes through it
-      await _wg.startVpn(
-        serverAddress: s.endpoint ?? '',
-        wgQuickConfig: s.text,
-        providerBundleIdentifier: appPackage,
-        includedApps: const [appPackage],
-      );
+      if (await _android.invokeMethod<bool>('allow') != true) throw StateError('the VPN was not allowed on this TV');
+      await _init();
+      await _wg
+          .startVpn(
+            serverAddress: s.endpoint ?? '',
+            wgQuickConfig: s.text,
+            providerBundleIdentifier: appPackage,
+            includedApps: const [appPackage],
+          )
+          .timeout(const Duration(seconds: 30));
       final deadline = DateTime.now().add(const Duration(seconds: 20));
       while (_stage != VpnStage.connected && await _wg.stage() != VpnStage.connected) {
         if (DateTime.now().isAfter(deadline)) throw TimeoutException('the tunnel did not come up');

@@ -72,6 +72,12 @@ class _GuideViewState extends State<GuideView> {
   bool _longDone = false;
   Timer? _clock;
 
+  // Up three times in quick succession: straight to the categories (Mark, 22 Oct 2026)
+  static const _quickUp = Duration(milliseconds: 400);
+  int _ups = 0;
+  DateTime? _upAt;
+  int _upRow = 0;
+
   int get _searchIndex => widget.categories.length + 1;
 
   int get _vpnIndex => widget.categories.length + 2;
@@ -96,6 +102,7 @@ class _GuideViewState extends State<GuideView> {
       _focus.requestFocus();
       _scrollToRow();
     });
+    _scrollBar();
   }
 
   @override
@@ -172,6 +179,14 @@ class _GuideViewState extends State<GuideView> {
     });
   }
 
+  /// Onto the categories, at the one showing, scrolled into view.
+  void _toBar() {
+    _onBar = true;
+    _barIndex = _category;
+    _ups = 0;
+    _scrollBar();
+  }
+
   final Map<int, GlobalKey> _barKeys = {};
   double? _gridHeight;
 
@@ -223,10 +238,25 @@ class _GuideViewState extends State<GuideView> {
       return k == LogicalKeyboardKey.arrowUp ? KeyEventResult.handled : KeyEventResult.ignored;
     }
     if (k == LogicalKeyboardKey.arrowUp) {
+      // a held Up only scrolls; the third of three quick presses goes back to the channel it started from (so Down
+      // returns there) and up to the categories
+      final now = DateTime.now();
+      if (event is KeyDownEvent) {
+        if (_upAt == null || now.difference(_upAt!) > _quickUp) {
+          _ups = 0;
+          _upRow = _grid.row;
+        }
+        _ups++;
+        _upAt = now;
+      } else {
+        _ups = 0;
+      }
       setState(() {
-        if (!_grid.up()) {
-          _onBar = true;
-          _barIndex = _category;
+        if (_ups >= 3) {
+          _grid.row = _upRow.clamp(0, max(0, _channels.length - 1));
+          _toBar();
+        } else if (!_grid.up()) {
+          _toBar();
         }
       });
     } else if (k == LogicalKeyboardKey.arrowDown) {

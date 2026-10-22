@@ -177,10 +177,13 @@ class _WatchPageState extends State<WatchPage> {
     try {
       final address = await library.streamFor(ch);
       if (token != _token) return;
+      // drawn by an Android SurfaceView, not a Flutter texture: on a real Google TV (22 Oct 2026) the texture showed
+      // the picture in one corner with the rest of the screen green
       final player = VideoPlayerController.networkUrl(
         Uri.parse(address.url),
         formatHint: address.hls ? VideoFormat.hls : null,
         httpHeaders: address.headers,
+        viewType: VideoViewType.platformView,
       );
       _player = player;
       await player.initialize().timeout(_startTimeout);

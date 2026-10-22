@@ -1,14 +1,18 @@
 package com.themarkchristie.nevermoreiptv
 
 import android.content.Intent
+import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
+private const val VPN_REQUEST = 4711
+
 class MainActivity : FlutterActivity() {
     private var pendingSetup: Map<String, Any?>? = null
+    private var vpnAnswer: MethodChannel.Result? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,6 +44,32 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+        // Android's "allow this VPN" question (the VPN plug-in asks it but never hears the answer)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nevermore/vpn").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "allow" -> {
+                    val ask = VpnService.prepare(this)
+                    if (ask == null) {
+                        result.success(true)
+                    } else {
+                        vpnAnswer?.success(false)
+                        vpnAnswer = result
+                        startActivityForResult(ask, VPN_REQUEST)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == VPN_REQUEST) {
+            vpnAnswer?.success(resultCode == RESULT_OK)
+            vpnAnswer = null
+            return
+        }
+        super.onActivityResult(requestCode, resultCode, data)
     }
 
     /**

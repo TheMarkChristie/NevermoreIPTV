@@ -9,3 +9,10 @@
 -keep class com.beust.klaxon.** { *; }
 -keep class kotlin.Metadata { *; }
 -dontwarn com.beust.klaxon.**
+
+# No chatter in the TV's log: the VPN plug-in writes the whole WireGuard file there, private key and all, at info level
+-assumenosideeffects class android.util.Log {
+    public static int v(...);
+    public static int d(...);
+    public static int i(...);
+}
