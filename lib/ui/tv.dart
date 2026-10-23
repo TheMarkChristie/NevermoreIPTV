@@ -13,6 +13,17 @@ const tvAlert = Color(0xFFE8A0A0);
 /// Nothing in the outer 5% of the screen: TVs can crop it (overscan).
 const overscan = EdgeInsets.symmetric(horizontal: 48, vertical: 27);
 
+/// The screen's margin: [overscan] on a TV (or anything wider than tall); a phone held upright (Mark, 23 Oct 2026: "it
+/// also doesnt auto rotate and fit") has no overscan and no width to spare.
+EdgeInsets overscanOf(BuildContext context) => isUpright(context) ? _upright : overscan;
+
+const _upright = EdgeInsets.symmetric(horizontal: 12, vertical: 16);
+
+bool isUpright(BuildContext context) {
+  final size = MediaQuery.sizeOf(context);
+  return size.width < size.height;
+}
+
 class TvButton extends StatelessWidget {
   const TvButton({
     super.key,
@@ -168,7 +179,7 @@ class _TextEntryPageState extends State<TextEntryPage> {
     return Scaffold(
       backgroundColor: tvBackground,
       body: Padding(
-        padding: overscan,
+        padding: overscanOf(context),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

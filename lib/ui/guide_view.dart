@@ -25,7 +25,6 @@ import 'tv.dart';
 import 'vpn_card.dart';
 
 const _rowHeight = 44.0;
-const _labelWidth = 230.0;
 const _nowLine = Color(0xFFE5484D);
 
 class GuideView extends StatefulWidget {
@@ -77,6 +76,12 @@ class _GuideViewState extends State<GuideView> {
   int _ups = 0;
   DateTime? _upAt;
   int _upRow = 0;
+
+  // a phone held upright: the preview over the details, and a narrower channel column (no numbers) so the
+  // programmes keep room
+  bool _upright = false;
+
+  double get _labelWidth => _upright ? 150.0 : 230.0;
 
   int get _searchIndex => widget.categories.length + 1;
 
@@ -413,35 +418,38 @@ class _GuideViewState extends State<GuideView> {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
+    _upright = isUpright(context);
     // the top panel gives way on a short screen so the grid keeps four rows or more
     final top = (MediaQuery.sizeOf(context).height * 0.28).clamp(96.0, 150.0);
+    final preview = ColoredBox(color: Colors.black, child: widget.video);
     return Focus(
       focusNode: _focus,
       onKeyEvent: _onKey,
       child: Container(
         color: tvBackground,
-        padding: overscan,
+        padding: overscanOf(context),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              height: top,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    width: top * 16 / 9,
-                    height: top,
-                    child: ColoredBox(color: Colors.black, child: widget.video),
-                  ),
-                  const SizedBox(width: 18),
-                  // clipped: on a short screen the description gives way, never the categories
-                  Expanded(
-                    child: ClipRect(child: _detailsPanel(text, descLines: top >= 140 ? 3 : 1)),
-                  ),
-                ],
+            if (_upright) ...[
+              AspectRatio(aspectRatio: 16 / 9, child: preview),
+              const SizedBox(height: 10),
+              SizedBox(height: 100, child: ClipRect(child: _detailsPanel(text, descLines: 1))),
+            ] else
+              SizedBox(
+                height: top,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(width: top * 16 / 9, height: top, child: preview),
+                    const SizedBox(width: 18),
+                    // clipped: on a short screen the description gives way, never the categories
+                    Expanded(
+                      child: ClipRect(child: _detailsPanel(text, descLines: top >= 140 ? 3 : 1)),
+                    ),
+                  ],
+                ),
               ),
-            ),
             const SizedBox(height: 10),
             SizedBox(height: 40, child: _categoryBar(text)),
             const SizedBox(height: 6),
@@ -655,14 +663,15 @@ class _GuideViewState extends State<GuideView> {
                   children: [
                     ChannelLogo(url: ch.channel.logo, name: ch.name, size: 28),
                     const SizedBox(width: 8),
-                    SizedBox(
-                      width: 40,
-                      child: Text(
-                        ch.channel.number == null ? '' : '${ch.channel.number}',
-                        style: text.bodySmall?.copyWith(color: tvMuted),
-                        overflow: TextOverflow.clip,
+                    if (!_upright)
+                      SizedBox(
+                        width: 40,
+                        child: Text(
+                          ch.channel.number == null ? '' : '${ch.channel.number}',
+                          style: text.bodySmall?.copyWith(color: tvMuted),
+                          overflow: TextOverflow.clip,
+                        ),
                       ),
-                    ),
                     Expanded(
                       child: Text(
                         ch.name,

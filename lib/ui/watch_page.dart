@@ -402,8 +402,11 @@ class _WatchPageState extends State<WatchPage> {
           child: Stack(
             fit: StackFit.expand,
             children: [
+              if (!_guideOpen) _video(text),
+              // over the picture, not around it: the picture is an Android view (0.5.4) and keeps the touches on it
               if (!_guideOpen)
                 GestureDetector(
+                  behavior: HitTestBehavior.opaque,
                   onTap: _openGuide,
                   // on a touch screen: swipe up for the next channel, down for the previous
                   onVerticalDragEnd: (d) {
@@ -411,7 +414,7 @@ class _WatchPageState extends State<WatchPage> {
                     if (v < -300) _step(1);
                     if (v > 300) _step(-1);
                   },
-                  child: _video(text),
+                  child: const SizedBox.expand(),
                 ),
               if (_all.isEmpty && !_guideOpen) _empty(text),
               if (_error != null && !_guideOpen) _errorCard(text),
@@ -507,9 +510,9 @@ class _WatchPageState extends State<WatchPage> {
     final ch = _current!;
     final (now, next) = library.nowNextFor(ch.uid);
     return Positioned(
-      left: overscan.left,
-      right: overscan.right,
-      bottom: overscan.bottom,
+      left: overscanOf(context).left,
+      right: overscanOf(context).right,
+      bottom: overscanOf(context).bottom,
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(color: tvBackground.withAlpha(225), borderRadius: BorderRadius.circular(12)),

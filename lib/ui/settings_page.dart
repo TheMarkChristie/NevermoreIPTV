@@ -13,7 +13,7 @@ import 'manage_source_page.dart';
 import 'tv.dart';
 import 'vpn_card.dart';
 
-const appVersion = '0.5.4';
+const appVersion = '0.5.5';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -26,7 +26,7 @@ class SettingsPage extends StatelessWidget {
       builder: (context, _) => Scaffold(
         backgroundColor: tvBackground,
         body: Padding(
-          padding: overscan,
+          padding: overscanOf(context),
           child: ListView(
             children: [
               Row(

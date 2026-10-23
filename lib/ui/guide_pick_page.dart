@@ -59,7 +59,7 @@ class _GuidePickPageState extends State<GuidePickPage> {
     return Scaffold(
       backgroundColor: tvBackground,
       body: Padding(
-        padding: overscan,
+        padding: overscanOf(context),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

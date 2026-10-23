@@ -71,7 +71,7 @@ class _VpnAddPageState extends State<VpnAddPage> {
     return Scaffold(
       backgroundColor: tvBackground,
       body: Padding(
-        padding: overscan,
+        padding: overscanOf(context),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

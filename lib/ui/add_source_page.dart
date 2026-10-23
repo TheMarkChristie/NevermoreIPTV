@@ -95,7 +95,7 @@ class _AddSourcePageState extends State<AddSourcePage> {
     return Scaffold(
       backgroundColor: tvBackground,
       body: Padding(
-        padding: overscan,
+        padding: overscanOf(context),
         child: ListView(
           children: [
             Text(editing ? 'Edit ${widget.existing!.name}' : 'Add a source', style: text.headlineSmall),

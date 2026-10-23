@@ -90,7 +90,7 @@ class _CategoriesPageState extends State<CategoriesPage> {
               skipTraversal: true,
               onKeyEvent: _onKey,
               child: Padding(
-                padding: overscan,
+                padding: overscanOf(context),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
