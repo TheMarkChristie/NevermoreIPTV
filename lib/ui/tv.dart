@@ -2,7 +2,10 @@
 /// fields that work with a remote (OK opens a page with the TV keyboard; Done on the keyboard finishes).
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 const tvBackground = Color(0xFF101114);
 const tvSurface = Color(0xFF1C1F25);
@@ -166,10 +169,46 @@ class TextEntryPage extends StatefulWidget {
 
 class _TextEntryPageState extends State<TextEntryPage> {
   late final _controller = TextEditingController(text: widget.initial);
+  final _field = FocusNode(debugLabel: 'text entry');
+
+  @override
+  void initState() {
+    super.initState();
+    // a TV can ignore the keyboard asked for while the page is still sliding in (Mark, 24 Oct 2026: "it also doesn't
+    // bring up the TV's keyboard"): asked again once the page is up
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final sliding = ModalRoute.of(context)?.animation;
+      if (sliding == null || sliding.isCompleted) {
+        _showKeyboard();
+        return;
+      }
+      void whenUp(AnimationStatus status) {
+        if (status != AnimationStatus.completed) return;
+        sliding.removeStatusListener(whenUp);
+        _showKeyboard();
+      }
+
+      sliding.addStatusListener(whenUp);
+    });
+  }
+
+  void _showKeyboard() {
+    if (!mounted) return;
+    _field.requestFocus();
+    unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.show'));
+  }
+
+  /// OK on the box brings the keyboard back after Back put it away.
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent || event.logicalKey != LogicalKeyboardKey.select) return KeyEventResult.ignored;
+    _showKeyboard();
+    return KeyEventResult.handled;
+  }
 
   @override
   void dispose() {
     _controller.dispose();
+    _field.dispose();
     super.dispose();
   }
 
@@ -185,16 +224,21 @@ class _TextEntryPageState extends State<TextEntryPage> {
           children: [
             Text(widget.label, style: text.headlineSmall),
             const SizedBox(height: 16),
-            TextField(
-              controller: _controller,
-              autofocus: true,
-              obscureText: widget.obscure,
-              keyboardType: widget.keyboard,
-              autocorrect: false,
-              enableSuggestions: false,
-              textInputAction: TextInputAction.done,
-              decoration: InputDecoration(hintText: widget.hint, border: const OutlineInputBorder()),
-              onSubmitted: (v) => Navigator.of(context).pop(v),
+            Focus(
+              onKeyEvent: _onKey,
+              skipTraversal: true,
+              child: TextField(
+                controller: _controller,
+                focusNode: _field,
+                autofocus: true,
+                obscureText: widget.obscure,
+                keyboardType: widget.keyboard,
+                autocorrect: false,
+                enableSuggestions: false,
+                textInputAction: TextInputAction.done,
+                decoration: InputDecoration(hintText: widget.hint, border: const OutlineInputBorder()),
+                onSubmitted: (v) => Navigator.of(context).pop(v),
+              ),
             ),
             const SizedBox(height: 12),
             Text(

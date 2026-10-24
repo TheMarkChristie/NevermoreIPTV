@@ -1,7 +1,7 @@
 name: nevermore_iptv
 description: "Nevermore IPTV: live TV on Google TV from an Xtream Codes login or an M3U link."
 publish_to: 'none'
-version: 0.5.7+13
+version: 0.6.0+14
 
 environment:
   sdk: ^3.13.1
@@ -25,3 +25,5 @@ flutter:
   uses-material-design: true
   assets:
     - assets/brand/
+    # presets.json, when this copy is built with one (kept out of the repository: lib/core/presets.dart)
+    - assets/house/

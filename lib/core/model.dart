@@ -41,6 +41,7 @@ class Channel {
     this.streamId,
     this.userAgent,
     this.referrer,
+    this.radio = false,
   });
 
   /// Stable inside its source: the Xtream stream id, or the playlist's group + name.
@@ -66,6 +67,9 @@ class Channel {
   final String? userAgent;
   final String? referrer;
 
+  /// Xtream's stream_type "radio_streams" (a provider that says so).
+  final bool radio;
+
   Map<String, dynamic> toJson() => {
     'key': key,
     'name': name,
@@ -78,6 +82,7 @@ class Channel {
     'stream_id': ?streamId,
     'user_agent': ?userAgent,
     'referrer': ?referrer,
+    if (radio) 'radio': true,
   };
 
   factory Channel.fromJson(Map<String, dynamic> j) => Channel(
@@ -92,6 +97,7 @@ class Channel {
     streamId: j['stream_id'] as String?,
     userAgent: j['user_agent'] as String?,
     referrer: j['referrer'] as String?,
+    radio: j['radio'] == true,
   );
 }
 
@@ -172,6 +178,7 @@ Catalog catalogFromXtream(List<Map<String, dynamic>> categories, List<Map<String
         guideId: _blank(s['epg_channel_id']),
         number: _int(s['num']),
         streamId: sid,
+        radio: type == 'radio_streams',
       ),
     );
   }

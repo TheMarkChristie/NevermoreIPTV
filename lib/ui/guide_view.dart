@@ -682,6 +682,7 @@ class _GuideViewState extends State<GuideView> {
                         ),
                       ),
                     ),
+                    if (library.isRadio(ch)) const Icon(Icons.radio, size: 16, color: tvMuted),
                     if (playing) const Icon(Icons.play_arrow, size: 16, color: tvAccent),
                   ],
                 ),

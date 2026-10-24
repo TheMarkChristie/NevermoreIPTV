@@ -61,3 +61,5 @@ android/key.properties
 
 # The working design notes stay local: they describe one household's provider, account and homes
 /docs/
+# A household's presets (code, provider server, picks): built into its own copies only
+assets/house/presets.json

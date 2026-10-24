@@ -74,6 +74,7 @@ class _WatchPageState extends State<WatchPage> {
     _life.dispose();
     _infoTimer?.cancel();
     _zapTimer?.cancel();
+    _flashTimer?.cancel();
     _backTimer?.cancel();
     _videoFocus.dispose();
     unawaited(_stopPlayer());
@@ -202,6 +203,8 @@ class _WatchPageState extends State<WatchPage> {
       if (token != _token) return;
       await player.play();
       _keepAwake(true);
+      // sound and no picture: a radio channel, shown with the radio sign from now on
+      unawaited(library.markRadio(ch.uid, player.value.size.width == 0).catchError((_) {}));
       player.addListener(_onPlayerValue);
       if (mounted) setState(() => _starting = false);
       _autoStart = null;
@@ -253,8 +256,22 @@ class _WatchPageState extends State<WatchPage> {
       _error = null;
     });
     _showInfo();
+    _flashLogo(next);
     _zapTimer?.cancel();
     _zapTimer = Timer(_zapSettle, () => _play(next));
+  }
+
+  PlayableChannel? _flash;
+  Timer? _flashTimer;
+
+  /// The new channel's logo in the middle of the screen for a second (Mark, 24 Oct 2026: "when we press up or down for
+  /// the new channel it should flash up in the middle of the screen (the logo) for 1 second").
+  void _flashLogo(PlayableChannel ch) {
+    _flashTimer?.cancel();
+    setState(() => _flash = ch);
+    _flashTimer = Timer(const Duration(seconds: 1), () {
+      if (mounted) setState(() => _flash = null);
+    });
   }
 
   void _showInfo() {
@@ -431,6 +448,19 @@ class _WatchPageState extends State<WatchPage> {
                 ),
               if (_all.isEmpty && !_guideOpen) _empty(text),
               if (_error != null && !_guideOpen) _errorCard(text),
+              if (_flash != null && !_guideOpen)
+                Center(
+                  child: IgnorePointer(
+                    child: Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: tvBackground.withAlpha(210),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: ChannelLogo(url: _flash!.channel.logo, name: _flash!.name, size: 160),
+                    ),
+                  ),
+                ),
               if (_info && !_guideOpen && _current != null) _infoBar(text),
               if (_guideOpen)
                 GuideView(
@@ -554,7 +584,15 @@ class _WatchPageState extends State<WatchPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(ch.name, style: text.titleLarge, overflow: TextOverflow.ellipsis),
+                  Row(
+                    children: [
+                      Flexible(child: Text(ch.name, style: text.titleLarge, overflow: TextOverflow.ellipsis)),
+                      if (library.isRadio(ch)) ...[
+                        const SizedBox(width: 10),
+                        const Icon(Icons.radio, size: 22, color: tvMuted),
+                      ],
+                    ],
+                  ),
                   if (now != null) ...[
                     _programmeRow(text, now, now: true),
                     Padding(

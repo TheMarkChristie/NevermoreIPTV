@@ -196,7 +196,10 @@ class Library extends ChangeNotifier {
     final layout = await _readJson('layout.json');
     if (layout is Map) groupOrder = [for (final x in (layout['group_order'] as List? ?? const [])) '$x'];
     final device = await _readJson('device.json');
-    if (device is Map) lastChannel = device['last'] as String?;
+    if (device is Map) {
+      lastChannel = device['last'] as String?;
+      radio = {for (final uid in (device['radio'] as List? ?? const [])) '$uid'};
+    }
     final settings = await _readJson('settings.json');
     if (settings is Map && settings['epg'] is List) epg = {for (final c in settings['epg'] as List) '$c'};
     _freeTvAdded = settings is Map && settings['free_tv_added'] == true;
@@ -359,6 +362,14 @@ class Library extends ChangeNotifier {
     scheduleGuideRebuild();
   }
 
+  /// A source's whole selection replaced (a preset), saved, and the guide read again for it.
+  Future<void> setSelection(String sourceId, Selection sel) async {
+    selections[sourceId] = sel;
+    notifyListeners();
+    await _writeJson('selection-$sourceId.json', sel.toJson());
+    scheduleGuideRebuild();
+  }
+
   Future<void> setGroup(String sourceId, String groupId, bool on) => change(sourceId, [
     {'group': groupId, 'on': on},
   ]);
@@ -460,8 +471,28 @@ class Library extends ChangeNotifier {
   Future<void> setLastChannel(String uid) async {
     if (lastChannel == uid) return;
     lastChannel = uid;
-    await _writeJson('device.json', {'last': uid});
+    await _saveDevice();
   }
+
+  /// Channels that played with sound and no picture (Mark, 24 Oct 2026: "I also want to have radio icon if it's a
+  /// radio channel"). Playlists do not say which are radio, and names do not either ("Radio Bremen" is television).
+  Set<String> radio = {};
+
+  bool isRadio(PlayableChannel ch) => ch.channel.radio || radio.contains(ch.uid);
+
+  /// What playing a channel showed: sound only, or a picture.
+  Future<void> markRadio(String uid, bool on) async {
+    if (radio.contains(uid) == on) return;
+    if (on) {
+      radio.add(uid);
+    } else {
+      radio.remove(uid);
+    }
+    notifyListeners();
+    await _saveDevice();
+  }
+
+  Future<void> _saveDevice() => _writeJson('device.json', {'last': ?lastChannel, 'radio': radio.toList()});
 
   Future<StreamAddress> streamFor(PlayableChannel ch) async {
     final s = ch.source;

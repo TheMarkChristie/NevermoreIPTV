@@ -11,9 +11,15 @@ import 'manage_source_page.dart';
 import 'tv.dart';
 
 class AddSourcePage extends StatefulWidget {
-  const AddSourcePage({super.key, this.existing, this.firstRun = false, this.onFinished});
+  const AddSourcePage({super.key, this.existing, this.template, this.firstRun = false, this.onFinished, this.onSaved});
 
   final Source? existing;
+
+  /// A new source's starting kind, name and server (a preset's); the login is still typed here.
+  final Source? template;
+
+  /// Given the new source instead of going on to choose its groups (a preset chooses them).
+  final ValueChanged<Source>? onSaved;
 
   /// The first source on this TV: no Cancel, and the TV opens once groups are chosen.
   final bool firstRun;
@@ -26,9 +32,9 @@ class AddSourcePage extends StatefulWidget {
 }
 
 class _AddSourcePageState extends State<AddSourcePage> {
-  late SourceKind _kind = widget.existing?.kind ?? SourceKind.xtream;
-  late String _name = widget.existing?.name ?? '';
-  late String _url = widget.existing?.url ?? '';
+  late SourceKind _kind = widget.existing?.kind ?? widget.template?.kind ?? SourceKind.xtream;
+  late String _name = widget.existing?.name ?? widget.template?.name ?? '';
+  late String _url = widget.existing?.url ?? widget.template?.url ?? '';
   late String _username = widget.existing?.username ?? '';
   late String _password = widget.existing?.password ?? '';
   late String _guide = widget.existing?.guideUrl ?? '';
@@ -70,7 +76,11 @@ class _AddSourcePageState extends State<AddSourcePage> {
       await library.saveSource(source, catalog: result.catalog, account: result.account);
       if (!mounted) return;
       final done = widget.onFinished ?? nav.pop;
-      if (widget.existing == null) {
+      final saved = widget.onSaved;
+      if (widget.existing == null && saved != null) {
+        nav.pop();
+        saved(source);
+      } else if (widget.existing == null) {
         await nav.pushReplacement(
           MaterialPageRoute(
             builder: (_) => ManageSourcePage(sourceId: source.id, firstTime: true, onDone: done),
