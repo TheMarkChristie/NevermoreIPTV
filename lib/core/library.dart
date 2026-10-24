@@ -247,6 +247,7 @@ class Library extends ChangeNotifier {
     if (device is Map) {
       lastChannel = device['last'] as String?;
       radio = {for (final uid in (device['radio'] is List ? device['radio'] as List : const [])) '$uid'};
+      pictureFill = device['fill'] == true;
       siteIcons = {
         for (final e in (device['icons'] is Map ? device['icons'] as Map : const {}).entries) '${e.key}': '${e.value}',
       };
@@ -594,6 +595,17 @@ class Library extends ChangeNotifier {
     await _saveDevice();
   }
 
+  /// The picture filling the screen with its edges cut, instead of fitted whole with bars (Mark, 24 Oct 2026, on a
+  /// phone: "does not seem to go full size in landscape or portrait mode").
+  bool pictureFill = false;
+
+  Future<void> setPictureFill(bool on) async {
+    if (pictureFill == on) return;
+    pictureFill = on;
+    notifyListeners();
+    await _saveDevice();
+  }
+
   /// Web site address -> its icon address, found once and kept (every start is a cold one).
   Map<String, String> siteIcons = {};
 
@@ -602,8 +614,12 @@ class Library extends ChangeNotifier {
     await _saveDevice();
   }
 
-  Future<void> _saveDevice() =>
-      _writeJson('device.json', {'last': ?lastChannel, 'radio': radio.toList(), 'icons': siteIcons});
+  Future<void> _saveDevice() => _writeJson('device.json', {
+    'last': ?lastChannel,
+    'radio': radio.toList(),
+    'icons': siteIcons,
+    'fill': pictureFill,
+  });
 
   Future<StreamAddress> streamFor(PlayableChannel ch) async {
     final s = ch.source;

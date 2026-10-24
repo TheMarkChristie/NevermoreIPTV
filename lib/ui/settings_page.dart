@@ -287,6 +287,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       const SizedBox(height: 24),
                       const _GuideCard(),
                       const SizedBox(height: 12),
+                      const _PictureCard(),
+                      const SizedBox(height: 12),
                       const VpnCard(),
                       const SizedBox(height: 12),
                       const _UpdateCard(),
@@ -565,6 +567,47 @@ class _UpdateCard extends StatelessWidget {
                   if (!u.busy) unawaited(u.check());
                 },
               ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Settings > Picture: the whole picture with bars where its shape does not match the screen, or the screen filled with
+/// the edges cut (Mark, 24 Oct 2026, on a phone: "does not seem to go full size"). A double tap on the picture switches
+/// too, on a touch screen.
+class _PictureCard extends StatelessWidget {
+  const _PictureCard();
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(listenable: library, builder: (context, _) => _card(context));
+
+  Widget _card(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final fill = library.pictureFill;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: tvSurface, borderRadius: BorderRadius.circular(10)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Picture', style: text.titleMedium),
+          const SizedBox(height: 4),
+          Text(
+            fill
+                ? 'Fill: the picture covers the whole screen; what does not fit is cut at the edges.'
+                : 'Fit: the whole picture, with black bars where its shape does not match the screen.',
+            style: text.bodyMedium?.copyWith(color: tvMuted),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 8,
+            children: [
+              for (final (on, label) in const [(false, 'Fit'), (true, 'Fill')])
+                TvButton(selected: fill == on, label: label, onPressed: () => unawaited(library.setPictureFill(on))),
             ],
           ),
         ],

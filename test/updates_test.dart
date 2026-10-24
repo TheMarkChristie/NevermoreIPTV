@@ -66,6 +66,46 @@ void main() {
     });
   });
 
+  group('daily check', () {
+    late Directory tmp;
+    setUp(() => tmp = Directory.systemTemp.createTempSync('nevermore_stamp'));
+    tearDown(() => tmp.deleteSync(recursive: true));
+
+    Updater make(http.Client client) => Updater(
+      current: '0.7.5',
+      cacheDir: () async => tmp,
+      stampFile: () async => File('${tmp.path}${Platform.pathSeparator}stamp.json'),
+      client: client,
+    );
+
+    test('a recent answer stands without asking GitHub; an old one is asked again', () async {
+      final stamp = File('${tmp.path}${Platform.pathSeparator}stamp.json');
+      const newer = Release(version: '9.9.9', apkUrl: 'https://example.org/a.apk', apkSize: 1, notes: '', pageUrl: '');
+      stamp.writeAsStringSync(jsonEncode({'checked': DateTime.now().toIso8601String(), 'release': newer.toStored()}));
+      final silent = make(MockClient((_) async => throw StateError('GitHub was asked')));
+      await silent.checkIfDue();
+      expect(silent.state, UpdateState.available);
+      expect(silent.latest?.version, '9.9.9');
+      expect(silent.newer, isTrue);
+
+      stamp.writeAsStringSync(
+        jsonEncode({'checked': DateTime.now().subtract(const Duration(days: 2)).toIso8601String(), 'release': null}),
+      );
+      var asked = 0;
+      final again = make(
+        MockClient((_) async {
+          asked++;
+          return http.Response('{"message":"Not Found"}', 404);
+        }),
+      );
+      await again.checkIfDue();
+      expect(asked, 1);
+      expect(again.state, UpdateState.upToDate);
+      expect(again.latest, isNull);
+      expect(jsonDecode(stamp.readAsStringSync())['release'], isNull);
+    });
+  });
+
   group('download', () {
     late Directory tmp;
     setUp(() => tmp = Directory.systemTemp.createTempSync('nevermore_upd'));

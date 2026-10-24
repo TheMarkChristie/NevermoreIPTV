@@ -13,7 +13,7 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
 /// The version this build is, shown in Settings and compared with the releases. Checked against pubspec.yaml by a test.
-const appVersion = '0.7.4';
+const appVersion = '0.7.5';
 
 /// GitHub's "latest release" answer for the app. A build for a check on the emulator can point it at a local file:
 /// --dart-define=NV_UPDATE_API=http://10.0.2.2:8000/latest.json
@@ -39,6 +39,26 @@ class Release {
   final int apkSize;
   final String notes;
   final String pageUrl;
+
+  /// As kept in the check stamp between starts.
+  Map<String, Object?> toStored() => {
+    'version': version,
+    'apk': apkUrl,
+    'size': apkSize,
+    'notes': notes,
+    'page': pageUrl,
+  };
+
+  static Release? fromStored(Object? j) {
+    if (j is! Map || j['version'] is! String || j['apk'] is! String) return null;
+    return Release(
+      version: j['version'] as String,
+      apkUrl: j['apk'] as String,
+      apkSize: j['size'] is num ? (j['size'] as num).toInt() : 0,
+      notes: '${j['notes'] ?? ''}',
+      pageUrl: '${j['page'] ?? ''}',
+    );
+  }
 }
 
 /// The release in GitHub's JSON, or null when there is nothing to install: a draft, a tag without an APK, a tag that is
@@ -142,7 +162,8 @@ class Updater extends ChangeNotifier {
   /// The app's cache folder: the APK goes under its updates/ (the FileProvider path the installer may read).
   final Future<Directory> Function() cacheDir;
 
-  /// Where the time of the last check is kept, so a cold start does not ask GitHub every time.
+  /// Where the last check is kept (its time and answer), so a cold start within the day neither asks GitHub again nor
+  /// forgets what it said.
   final Future<File> Function() stampFile;
   final http.Client _client;
   static const _channel = MethodChannel('nevermore/update');
@@ -159,14 +180,17 @@ class Updater extends ChangeNotifier {
   bool get newer => latest != null && compareVersions(latest!.version, current) > 0;
   bool get busy => state == UpdateState.checking || state == UpdateState.downloading;
 
-  /// The daily check, at start: nothing when the last one was recent.
+  /// The daily check, at start: a recent answer stands (the card and the start notice know it), else GitHub is asked.
   Future<void> checkIfDue() async {
     try {
       final f = await stampFile();
       if (await f.exists()) {
-        final last = DateTime.tryParse(await f.readAsString());
+        final stamp = jsonDecode(await f.readAsString());
+        final last = stamp is Map ? DateTime.tryParse('${stamp['checked']}') : null;
         if (last != null && DateTime.now().difference(last) < _checkEvery) {
           checkedAt = last;
+          latest = Release.fromStored(stamp['release']);
+          _set(newer ? UpdateState.available : UpdateState.upToDate);
           return;
         }
       }
@@ -184,7 +208,10 @@ class Updater extends ChangeNotifier {
       checkedAt = DateTime.now();
       _set(newer ? UpdateState.available : UpdateState.upToDate);
       try {
-        await (await stampFile()).writeAsString(checkedAt!.toIso8601String(), flush: true);
+        await (await stampFile()).writeAsString(
+          jsonEncode({'checked': checkedAt!.toIso8601String(), 'release': latest?.toStored()}),
+          flush: true,
+        );
       } catch (_) {
         // the stamp is a convenience
       }

@@ -499,11 +499,30 @@ class _WatchPageState extends State<WatchPage> {
             ),
           );
         }
-        return Center(
-          child: AspectRatio(aspectRatio: v.aspectRatio, child: VideoPlayer(player)),
+        if (small || !library.pictureFill) {
+          return Center(
+            child: AspectRatio(aspectRatio: v.aspectRatio, child: VideoPlayer(player)),
+          );
+        }
+        // Fill: scaled until it covers the screen, what does not fit cut at the edges
+        return SizedBox.expand(
+          child: FittedBox(
+            fit: BoxFit.cover,
+            clipBehavior: Clip.hardEdge,
+            child: SizedBox(width: v.size.width, height: v.size.height, child: VideoPlayer(player)),
+          ),
         );
       },
     );
+  }
+
+  /// A double tap on the picture (a phone): fitted whole, or filling the screen.
+  Future<void> _togglePictureFill() async {
+    final fill = !library.pictureFill;
+    await library.setPictureFill(fill);
+    if (!mounted) return;
+    setState(() {});
+    _showNotice(fill ? 'Picture: Fill (the edges are cut)' : 'Picture: Fit (the whole picture)');
   }
 
   /// The spinner with a word on what is happening: a start can take a while on a slow network, and three tries longer.
@@ -548,6 +567,7 @@ class _WatchPageState extends State<WatchPage> {
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: _openGuide,
+                  onDoubleTap: () => unawaited(_togglePictureFill()),
                   // on a touch screen: swipe up for the next channel, down for the previous
                   onVerticalDragEnd: (d) {
                     final v = d.primaryVelocity ?? 0;
