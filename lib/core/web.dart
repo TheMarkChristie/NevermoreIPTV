@@ -1,6 +1,9 @@
 /// The guide's Web category: the house file's sites listed like channels, each with its own favicon as the logo; OK
 /// opens one in the browser (web_page.dart). Mark, 24 Oct 2026: "they should appear in the EPG list under Web and then
 /// when i select on web the 3 channels are listed and open the breowser in that url".
+///
+/// The category appears at once, with the icons found on earlier starts (kept in device.json); icons still missing are
+/// looked up in the background and drawn when they arrive, so a site that is down never holds the category back.
 library;
 
 import 'package:http/http.dart' as http;
@@ -43,12 +46,12 @@ Uri? namedIconUrl(String html, Uri page) {
 
 /// The site's icon address: the one its page names, else the first of the usual places that is a picture (a page
 /// built by script names none, and its /favicon.ico can be the page itself, as one of Mark's sites did on 24 Oct 2026).
-Future<String> faviconFor(String url) async {
+/// Null when nothing is found (the channel's initials are drawn instead).
+Future<String?> faviconFor(String url) async {
   final page = Uri.parse(url);
   const headers = {'User-Agent': browserUserAgent};
-  const wait = Duration(seconds: 10);
   try {
-    final named = namedIconUrl((await http.get(page, headers: headers).timeout(wait)).body, page);
+    final named = namedIconUrl((await http.get(page, headers: headers).timeout(const Duration(seconds: 8))).body, page);
     if (named != null) return named.toString();
   } catch (_) {
     // unreadable: try the usual places
@@ -56,28 +59,40 @@ Future<String> faviconFor(String url) async {
   for (final path in const ['/favicon.ico', '/favicon.png', '/apple-touch-icon.png']) {
     final icon = page.resolve(path);
     try {
-      final resp = await http.get(icon, headers: headers).timeout(wait);
+      final resp = await http.get(icon, headers: headers).timeout(const Duration(seconds: 4));
       if (resp.statusCode == 200 && (resp.headers['content-type'] ?? '').startsWith('image/')) return icon.toString();
     } catch (_) {
       // not there
     }
   }
-  return page.resolve('/favicon.ico').toString();
+  return null;
 }
 
-/// The Web category, or null when this copy has no sites.
-Future<Category?> webCategory() async {
-  final sites = await loadSites();
+/// The Web category from [sites], with the icons known so far ([icons]: site address -> icon address); null without
+/// sites.
+Category? webCategory(List<WebSite> sites, Map<String, String> icons) {
   if (sites.isEmpty) return null;
   final source = Source(id: webSourceId, kind: SourceKind.m3u, name: webCategoryName, url: '');
-  final icons = await Future.wait([for (final s in sites) faviconFor(s.url)]);
   return Category(webCategoryName, [
     for (final (i, s) in sites.indexed)
       PlayableChannel(
         source,
-        Channel(s.url, s.name, webSourceId, i, logo: icons[i], url: s.url),
+        Channel(s.url, s.name, webSourceId, i, logo: icons[s.url], url: s.url),
         s.name,
         webCategoryName,
       ),
   ], []);
+}
+
+/// The icons of the sites not in [known], looked up on the web: site address -> icon address, only the ones found.
+Future<Map<String, String>> findSiteIcons(List<WebSite> sites, Map<String, String> known) async {
+  final out = <String, String>{};
+  await Future.wait([
+    for (final s in sites)
+      if (!known.containsKey(s.url))
+        faviconFor(s.url).then((icon) {
+          if (icon != null) out[s.url] = icon;
+        }),
+  ]);
+  return out;
 }

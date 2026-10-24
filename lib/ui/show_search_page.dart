@@ -28,16 +28,26 @@ Future<ShowPick?> searchForShow(BuildContext context, {String initial = ''}) asy
   return nav.push<ShowPick>(MaterialPageRoute(builder: (_) => ShowSearchPage(query: query.trim())));
 }
 
-class ShowSearchPage extends StatelessWidget {
+class ShowSearchPage extends StatefulWidget {
   const ShowSearchPage({super.key, required this.query});
 
   final String query;
 
   @override
+  State<ShowSearchPage> createState() => _ShowSearchPageState();
+}
+
+class _ShowSearchPageState extends State<ShowSearchPage> {
+  /// Found once: the search folds every programme's text, which is not work for every rebuild.
+  late final List<(PlayableChannel, ShowHit)> _hits = library.findShows(widget.query);
+
+  @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    final hits = library.findShows(query);
+    final query = widget.query;
+    final hits = _hits;
     final now = nowSeconds();
+    final upright = isUpright(context);
     return Scaffold(
       backgroundColor: tvBackground,
       body: Padding(
@@ -91,7 +101,7 @@ class ShowSearchPage extends StatelessWidget {
                       child: Row(
                         children: [
                           SizedBox(
-                            width: 140,
+                            width: upright ? 96 : 140,
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -108,6 +118,7 @@ class ShowSearchPage extends StatelessWidget {
                             ),
                           ),
                           Expanded(
+                            flex: 3,
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -124,7 +135,10 @@ class ShowSearchPage extends StatelessWidget {
                           const SizedBox(width: 12),
                           ChannelLogo(url: ch.channel.logo, name: ch.name, size: 32),
                           const SizedBox(width: 8),
-                          SizedBox(width: 200, child: Text(ch.name, overflow: TextOverflow.ellipsis)),
+                          Expanded(
+                            flex: upright ? 2 : 1,
+                            child: Text(ch.name, overflow: TextOverflow.ellipsis),
+                          ),
                         ],
                       ),
                     ),

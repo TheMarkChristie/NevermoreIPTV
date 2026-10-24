@@ -58,11 +58,17 @@ class VpnUploadServer {
 
   HttpServer? _server;
   late final String code = (100000 + Random.secure().nextInt(900000)).toString();
-  int _wrong = 0;
+
+  /// Wrong codes per caller: five from one address close the page (a browser's own icon requests do not count).
+  final Map<String, int> _wrongBy = {};
   final _received = StreamController<String>.broadcast();
+  final _closed = Completer<void>();
 
   /// The name of each file kept, as it arrives.
   Stream<String> get received => _received.stream;
+
+  /// Done when the page closed itself after five wrong codes, so the screen can say so instead of waiting on.
+  Future<void> get closed => _closed.future;
 
   Future<int> start() async {
     try {
@@ -82,9 +88,17 @@ class VpnUploadServer {
 
   Future<void> _handle(HttpRequest req) async {
     final res = req.response;
+    var guessed = 0;
     try {
-      if (req.uri.path != '/$code') {
-        _wrong++;
+      final path = req.uri.path;
+      // browsers ask for an icon by themselves: no answer, and not a wrong code (review, 24 Oct 2026)
+      if (path == '/favicon.ico' || path.startsWith('/apple-touch-icon')) {
+        res.statusCode = HttpStatus.noContent;
+        return;
+      }
+      if (path != '/$code') {
+        final who = req.connectionInfo?.remoteAddress.address ?? '?';
+        guessed = _wrongBy[who] = (_wrongBy[who] ?? 0) + 1;
         res.statusCode = HttpStatus.notFound;
         res.write('Not here.');
         return;
@@ -119,15 +133,19 @@ class VpnUploadServer {
       }
     } finally {
       await res.close();
-      // five wrong codes: someone is guessing - the page closes (after its answer, so that answer arrives whole)
-      if (_wrong >= 5) unawaited(_server?.close(force: true));
+      // five wrong codes from one caller: someone is guessing - the page closes (after its answer, so that answer
+      // arrives whole) and the screen is told
+      if (guessed >= 5) {
+        unawaited(_server?.close(force: true));
+        if (!_closed.isCompleted) _closed.complete();
+      }
     }
   }
 }
 
 const _page = '''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nevermore IPTV - VPN file</title>
+<title>Nevermore IPTV - VPN file</title><link rel="icon" href="data:,">
 <style>
   body { margin: 0; padding: 16px; font: 16px/1.5 system-ui, sans-serif; background: #101114; color: #f2f4f7; }
   main { max-width: 560px; margin: 0 auto; }

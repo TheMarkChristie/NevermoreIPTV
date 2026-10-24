@@ -2,6 +2,8 @@
 /// a login's account answers ("Active until 19 Nov 2026 - 0 of 2 connections in use"), a playlist is read and counted.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/library.dart';
@@ -65,6 +67,15 @@ class _AddSourcePageState extends State<AddSourcePage> {
       guideUrl: _xtream ? '' : normalAddress(_guide),
       output: _output,
     );
+    // the same login or playlist again would double every channel and ask the provider twice: point at the one there is
+    final same = library.sources.where((s) => s.id != source.id && sameSource(s, source)).firstOrNull;
+    if (same != null) {
+      setState(
+        () =>
+            _message = 'This ${_xtream ? 'login' : 'playlist'} is already on this TV as "${same.name}". Edit that one.',
+      );
+      return;
+    }
     setState(() {
       _busy = true;
       _message = _xtream ? 'Checking the login...' : 'Reading the playlist...';
@@ -159,15 +170,17 @@ class _AddSourcePageState extends State<AddSourcePage> {
                 onChanged: (v) => setState(() => _password = v),
               ),
               const SizedBox(height: 6),
-              Row(
+              Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  const SizedBox(width: 190, child: Text('  Streams')),
+                  SizedBox(width: isUpright(context) ? 80 : 190, child: const Text('  Streams')),
                   TvButton(
                     label: 'TS (recommended)',
                     selected: _output == 'ts',
                     onPressed: () => setState(() => _output = 'ts'),
                   ),
-                  const SizedBox(width: 10),
                   TvButton(
                     label: 'HLS',
                     selected: _output == 'm3u8',
@@ -194,7 +207,13 @@ class _AddSourcePageState extends State<AddSourcePage> {
             const SizedBox(height: 16),
             Row(
               children: [
-                TvButton(label: _busy ? 'Checking...' : 'Check and save', onPressed: _busy ? null : _save),
+                // stays enabled while busy: a button that disables itself drops the focus to the top of the page
+                TvButton(
+                  label: _busy ? 'Checking...' : 'Check and save',
+                  onPressed: () {
+                    if (!_busy) unawaited(_save());
+                  },
+                ),
                 if (!widget.firstRun) ...[
                   const SizedBox(width: 10),
                   TvButton(label: 'Cancel', onPressed: () => Navigator.of(context).pop()),

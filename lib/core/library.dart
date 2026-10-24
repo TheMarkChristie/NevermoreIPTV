@@ -55,7 +55,7 @@ int nowSeconds() => DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
 /// Raised whenever matching changes, so a guide cached by the old rules is read again (2: epgshare01's "(NO,NO)" and
 /// "[CODE]" names, 0.5.0).
-const guideMatcherVersion = 2;
+const guideMatcherVersion = 3;
 
 class StreamAddress {
   const StreamAddress(this.url, {required this.hls, required this.headers});
@@ -96,6 +96,9 @@ String accountLine(XtreamAccount a) {
 }
 
 class Library extends ChangeNotifier {
+  /// [folder]: where this TV's files live (tests give a temporary one; the app its support folder).
+  Library({Directory? folder}) : _dir = folder;
+
   final _store = SourceStore();
   List<Source> sources = [];
   final Map<String, Catalog> catalogs = {};
@@ -108,6 +111,17 @@ class Library extends ChangeNotifier {
   /// The channel last watched on this TV (`<source id>:<channel key>`).
   String? lastChannel;
   final Map<String, XtreamClient> _clients = {};
+
+  /// Sources saved while their list was being read: read again with the new login once that read ends.
+  final Set<String> _refreshAgain = {};
+
+  /// Waiting for a source's first list (the preset code, typed before the list is in).
+  final Map<String, Completer<void>> _listRead = {};
+
+  /// One write at a time per file, each through its own temporary name: two writes in flight (a held tick, or the
+  /// radio mark and the last channel after play()) no longer share a .part file and tear it (review, 24 Oct 2026).
+  final Map<String, Future<void>> _writes = {};
+  int _writeSeq = 0;
   final http.Client _http = http.Client();
   Directory? _dir;
   List<Category>? _categories;
@@ -142,16 +156,27 @@ class Library extends ChangeNotifier {
     try {
       return await decodeJson(await f.readAsString());
     } on FormatException {
+      // not JSON: set aside for a look rather than silently read as nothing
+      try {
+        await f.rename('${f.path}.bad');
+      } catch (_) {
+        // left where it is
+      }
+      debugPrint('$name is not JSON: set aside as $name.bad');
       return null;
     }
   }
 
-  Future<void> _writeJson(String name, Object data) async {
-    final f = await _file(name);
-    final text = await encodeJson(data);
-    final part = File('${f.path}.part');
-    await part.writeAsString(text, flush: true);
-    await part.rename(f.path);
+  Future<void> _writeJson(String name, Object data) {
+    final run = (_writes[name] ?? Future.value()).then((_) async {
+      final f = await _file(name);
+      final text = await encodeJson(data);
+      final part = File('${f.path}.${_writeSeq++}.part');
+      await part.writeAsString(text, flush: true);
+      await part.rename(f.path);
+    });
+    _writes[name] = run.then((_) {}, onError: (_) {});
+    return run;
   }
 
   SourceStatus statusOf(String id) => status.putIfAbsent(id, SourceStatus.new);
@@ -168,7 +193,25 @@ class Library extends ChangeNotifier {
     return s == null ? null : clientFor(s);
   }
 
-  String scrub(Source s, String text) => s.isXtream ? clientFor(s).scrub(text) : text;
+  /// Error text with the source's secrets taken out: a login's username and password in any encoding, and the values
+  /// a playlist address carries in its query (get.php?username=...&password=...) or before its host.
+  String scrub(Source s, String text) {
+    var out = redactSecrets(text);
+    if (s.isXtream) return clientFor(s).scrub(out);
+    for (final address in [s.url, s.guideUrl]) {
+      final uri = Uri.tryParse(address);
+      if (uri == null) continue;
+      final secret = RegExp(r'user|pass|token|key|secret', caseSensitive: false);
+      for (final v in [
+        for (final e in uri.queryParameters.entries)
+          if (secret.hasMatch(e.key)) e.value,
+        uri.userInfo,
+      ]) {
+        if (v.length >= 3) out = out.replaceAll(v, '***');
+      }
+    }
+    return out;
+  }
 
   @override
   void notifyListeners() {
@@ -194,11 +237,16 @@ class Library extends ChangeNotifier {
       selections[s.id] = Selection.fromJson(await _readJson('selection-${s.id}.json'));
     }
     final layout = await _readJson('layout.json');
-    if (layout is Map) groupOrder = [for (final x in (layout['group_order'] as List? ?? const [])) '$x'];
+    if (layout is Map && layout['group_order'] is List) {
+      groupOrder = [for (final x in layout['group_order'] as List) '$x'];
+    }
     final device = await _readJson('device.json');
     if (device is Map) {
       lastChannel = device['last'] as String?;
-      radio = {for (final uid in (device['radio'] as List? ?? const [])) '$uid'};
+      radio = {for (final uid in (device['radio'] is List ? device['radio'] as List : const [])) '$uid'};
+      siteIcons = {
+        for (final e in (device['icons'] is Map ? device['icons'] as Map : const {}).entries) '${e.key}': '${e.value}',
+      };
     }
     final settings = await _readJson('settings.json');
     if (settings is Map && settings['epg'] is List) epg = {for (final c in settings['epg'] as List) '$c'};
@@ -212,19 +260,33 @@ class Library extends ChangeNotifier {
       await _saveSettings();
     }
     notifyListeners();
+  }
+
+  /// Begins the reading that goes on while the app is open: stale lists now, then lists twice a day, guide files once a
+  /// day, the guide read again as its window moves on. Called after a login handed in at start is saved, so the first
+  /// read uses it (review, 24 Oct 2026).
+  void startRefreshing() {
     unawaited(refreshStale().then((_) => refreshGuide()));
-    // while the app is open: lists twice a day, guide files once a day, the guide read again as its window moves on
     _tick ??= Timer.periodic(const Duration(minutes: 30), (_) => refreshStale().then((_) => refreshGuide()));
   }
 
   /// Reads again every source whose list is missing or over 12 hours old, one source at a time.
   Future<void> refreshStale() async {
-    for (final s in List.of(sources)) {
+    for (final id in [for (final s in sources) s.id]) {
+      // the source as it is now: one saved or removed meanwhile is not read with its old login
+      final s = sourceById(id);
+      if (s == null) continue;
       final readAt = statusOf(s.id).readAt;
       if (catalogs[s.id] == null || readAt == null || DateTime.now().difference(readAt) > catalogMaxAge) {
         await refresh(s);
       }
     }
+  }
+
+  /// Done when the source's list has been read (or its read has failed); at once when it has one.
+  Future<void> whenListRead(String id) {
+    if (catalogs[id] != null) return Future.value();
+    return (_listRead[id] ??= Completer<void>()).future;
   }
 
   /// Checks a source before it is saved: a login's account, or a playlist read and counted.
@@ -234,12 +296,19 @@ class Library extends ChangeNotifier {
       final account = await client.account();
       return CheckResult(accountLine(account), account: account);
     }
-    final catalog = await _readPlaylist(s);
-    return CheckResult(
-      '${formatCount(catalog.channels.length)} channels in ${catalog.groups.length} groups'
-      '${catalog.skipped > 0 ? ', ${formatCount(catalog.skipped)} skipped as unplayable' : ''}',
-      catalog: catalog,
-    );
+    try {
+      final catalog = await _readPlaylist(s);
+      return CheckResult(
+        '${formatCount(catalog.channels.length)} channels in ${catalog.groups.length} groups'
+        '${catalog.skipped > 0 ? ', ${formatCount(catalog.skipped)} skipped as unplayable' : ''}',
+        catalog: catalog,
+      );
+    } on XtreamError {
+      rethrow;
+    } catch (err) {
+      // a network error names the address, which can carry the login
+      throw XtreamError(scrub(s, '$err'));
+    }
   }
 
   Future<Catalog> _readPlaylist(Source s) async {
@@ -262,6 +331,8 @@ class Library extends ChangeNotifier {
       sources.add(s);
     }
     _clients.remove(s.id);
+    // a read of the old login in flight: its result is dropped and the list read again with this one
+    if (statusOf(s.id).busy) _refreshAgain.add(s.id);
     await _store.save(sources);
     if (account != null) {
       statusOf(s.id)
@@ -277,6 +348,7 @@ class Library extends ChangeNotifier {
   }
 
   Future<void> removeSource(String id) async {
+    final guidesBefore = await _currentGuideFiles();
     sources.removeWhere((s) => s.id == id);
     catalogs.remove(id);
     selections.remove(id);
@@ -289,22 +361,39 @@ class Library extends ChangeNotifier {
       if (await f.exists()) await f.delete();
     }
     await _writeJson('layout.json', {'group_order': groupOrder});
+    // the login's own guide download goes with it
+    final keep = {for (final f in await _currentGuideFiles()) f.url};
+    for (final f in guidesBefore.where((f) => !keep.contains(f.url))) {
+      final file = File(f.path);
+      if (await file.exists()) await file.delete();
+    }
+    guideFiles = [
+      for (final f in guideFiles)
+        if (keep.contains(f.url)) f,
+    ];
+    _listRead.remove(id)?.complete();
     notifyListeners();
     scheduleGuideRebuild();
   }
 
+  /// True while [s] is the copy of its source the library holds; a save or a removal during a read makes it false.
+  bool _still(Source s) => identical(sourceById(s.id), s);
+
   Future<void> _storeCatalog(Source s, Catalog catalog) async {
+    if (!_still(s)) return;
     final now = DateTime.now();
     catalogs[s.id] = catalog;
     statusOf(s.id)
       ..readAt = now
       ..error = null;
+    _listRead.remove(s.id)?.complete();
     notifyListeners();
     await _writeJson('catalog-${s.id}.json', {'read_at': now.millisecondsSinceEpoch, 'catalog': catalog.toJson()});
     scheduleGuideRebuild();
   }
 
-  /// Reads a source's list again (and a login's account).
+  /// Reads a source's list again (and a login's account). A source saved or removed while its read is in flight has
+  /// that read's result dropped (and, if saved, is read again with the new login).
   Future<void> refresh(Source s) async {
     final st = statusOf(s.id);
     if (st.busy) return;
@@ -315,20 +404,30 @@ class Library extends ChangeNotifier {
     try {
       if (s.isXtream) {
         final client = clientFor(s);
+        final account = await client.account();
+        if (!_still(s)) return;
         st
-          ..account = await client.account()
+          ..account = account
           ..accountAt = DateTime.now();
         final groups = await client.liveCategories();
         final streams = await client.liveStreams();
+        if (!_still(s)) return;
         await _storeCatalog(s, catalogFromXtream(groups, streams));
       } else {
-        await _storeCatalog(s, await _readPlaylist(s));
+        final catalog = await _readPlaylist(s);
+        if (!_still(s)) return;
+        await _storeCatalog(s, catalog);
       }
     } catch (err) {
-      st.error = scrub(s, err is XtreamError ? err.message : '$err');
+      if (_still(s)) st.error = scrub(s, err is XtreamError ? err.message : '$err');
     } finally {
       st.busy = false;
+      _listRead.remove(s.id)?.complete();
       notifyListeners();
+      if (_refreshAgain.remove(s.id)) {
+        final current = sourceById(s.id);
+        if (current != null) unawaited(refresh(current));
+      }
     }
   }
 
@@ -492,7 +591,16 @@ class Library extends ChangeNotifier {
     await _saveDevice();
   }
 
-  Future<void> _saveDevice() => _writeJson('device.json', {'last': ?lastChannel, 'radio': radio.toList()});
+  /// Web site address -> its icon address, found once and kept (every start is a cold one).
+  Map<String, String> siteIcons = {};
+
+  Future<void> setSiteIcons(Map<String, String> icons) async {
+    siteIcons = Map.of(icons);
+    await _saveDevice();
+  }
+
+  Future<void> _saveDevice() =>
+      _writeJson('device.json', {'last': ?lastChannel, 'radio': radio.toList(), 'icons': siteIcons});
 
   Future<StreamAddress> streamFor(PlayableChannel ch) async {
     final s = ch.source;
@@ -522,12 +630,13 @@ class Library extends ChangeNotifier {
   Future<(String, String)> explainFailure(PlayableChannel ch, String error) async {
     final reason = scrub(ch.source, error);
     if (ch.source.isXtream) {
-      final a = await account(ch.source, force: true);
+      // the account answer explains a refused stream, but a dead network must not hold the card up for long
+      final a = await account(ch.source, force: true).timeout(const Duration(seconds: 5), onTimeout: () => null);
       if (a != null && a.active >= a.max) {
         return ('Both connections are in use (${a.active} of ${a.max})', 'Stop watching on another TV and try again.');
       }
     }
-    if (ch.geoBlocked && reason.contains('403')) {
+    if (ch.geoBlocked && RegExp(r'403|BAD_HTTP_STATUS|Source error').hasMatch(reason)) {
       return ('Blocked outside its own country', 'This channel only plays in the country it comes from.');
     }
     return ('This channel did not play', '${friendlyReason(reason)}\n${rawReason(reason)}');
@@ -607,9 +716,12 @@ class Library extends ChangeNotifier {
     guideBusy = true;
     notifyListeners();
     try {
-      final before = [for (final f in guideFiles) f.url].join('\n');
       guideFiles = await _currentGuideFiles();
-      var changed = download == false || before != [for (final f in guideFiles) f.url].join('\n');
+      // the counts from the last read until the files are read again (a cold start showed "0 channels" in Settings)
+      for (final f in guideFiles) {
+        if (f.channels == 0) f.channels = _builtCounts[fileKey(f.url)] ?? 0;
+      }
+      var changed = download == false;
       for (final f in guideFiles) {
         if (download == true || (download == null && f.stale)) {
           f.busy = true;
@@ -624,6 +736,13 @@ class Library extends ChangeNotifier {
           notifyListeners();
         }
       }
+      // the files on hand against the ones the cached guide was built from (kept in the cache, so a cold start with a
+      // fresh cache reads nothing again: every start is a cold one since 0.7.1)
+      final onHand = [
+        for (final f in guideFiles)
+          if (f.downloadedAt != null && File(f.path).existsSync()) fileKey(f.url),
+      ];
+      if (!_sameList(onHand, _builtFiles)) changed = true;
       final built = guideBuiltAt;
       if (changed || built == null || DateTime.now().difference(built) > const Duration(hours: 6)) {
         await _rebuildGuide();
@@ -658,19 +777,26 @@ class Library extends ChangeNotifier {
     ];
     final build = await buildGuide([for (final f in files) (f.label, f.path)], input, nowSeconds());
     for (var i = 0; i < files.length; i++) {
+      final kept = files[i].error?.startsWith('unreadable') == true ? null : files[i].error;
       files[i]
         ..channels = build.names[i].length
-        ..error = build.errors[i] ?? (files[i].error?.startsWith('unreadable') == true ? null : files[i].error);
+        // a file with bytes and no channels is a page (a login notice, a challenge) saved as a guide
+        ..error =
+            build.errors[i] ?? (files[i].size > 0 && build.names[i].isEmpty ? 'no channels in it: not a guide?' : kept);
     }
     _matchLabels = [for (final f in files) f.label];
     _guideNames = {for (var i = 0; i < files.length; i++) files[i].label: build.names[i]};
     guideMatches = build.matches;
     programmes = build.programmes;
     guideBuiltAt = DateTime.fromMillisecondsSinceEpoch(build.builtAt * 1000);
+    _builtFiles = [for (final f in files) fileKey(f.url)];
+    _builtCounts = {for (final f in files) fileKey(f.url): f.channels};
     notifyListeners();
     await _writeJson('guide-cache.json', {
       'built_at': build.builtAt,
       'matcher': guideMatcherVersion,
+      'files': _builtFiles,
+      'counts': _builtCounts,
       'labels': _matchLabels,
       'matches': {
         for (final e in guideMatches.entries) e.key: [e.value.$1, e.value.$2, e.value.$3],
@@ -704,11 +830,28 @@ class Library extends ChangeNotifier {
       // a guide matched by an older matcher is shown, but read again at once (guideBuiltAt left empty)
       if (built is int && cache['matcher'] == guideMatcherVersion) {
         guideBuiltAt = DateTime.fromMillisecondsSinceEpoch(built * 1000);
+        _builtFiles = [for (final k in (cache['files'] is List ? cache['files'] as List : const [])) '$k'];
+        _builtCounts = {
+          for (final e in (cache['counts'] is Map ? cache['counts'] as Map : const {}).entries)
+            '${e.key}': e.value is num ? (e.value as num).toInt() : 0,
+        };
       }
     } catch (_) {
       programmes = {};
       guideMatches = {};
     }
+  }
+
+  /// The guide files (by [fileKey]) the guide on hand was built from, and the channels each held.
+  List<String> _builtFiles = [];
+  Map<String, int> _builtCounts = {};
+
+  static bool _sameList(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
   }
 
   Future<void> setEpg(String code, bool on) async {
@@ -737,9 +880,11 @@ class Library extends ChangeNotifier {
       for (final g in defaultFreeTvGroups(Platform.localeName)) {'group': g, 'on': true},
     ]);
     await _writeJson('selection-${source.id}.json', selections[source.id]!.toJson());
+    await saveSource(source);
+    // marked only once the source is saved: a process ended between the two (Home at the first start) must not leave a
+    // TV that never gets its channels
     _freeTvAdded = true;
     await _saveSettings();
-    await saveSource(source);
   }
 
   List<Programme> programmesFor(String uid) => programmes[uid] ?? const [];
@@ -771,6 +916,13 @@ class Library extends ChangeNotifier {
       _guideNames = {for (var i = 0; i < files.length; i++) files[i].label: names[i]};
     }
     return searchGuideChannels([for (final e in _guideNames.entries) GuideSource(e.key, e.value)], query);
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    _rebuildTimer?.cancel();
+    super.dispose();
   }
 
   // ---- from the install script ----

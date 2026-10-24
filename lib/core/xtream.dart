@@ -34,6 +34,15 @@ class XtreamAccount {
   final DateTime? expires;
 }
 
+/// Whatever a text carries that looks like a login, masked by shape: username= and password= query values, and the two
+/// segments after /live/ in a stream address. Used before any error text reaches a screen or a log.
+String redactSecrets(String text) => text
+    .replaceAllMapped(
+      RegExp(r'([?&](?:username|password|user|pass)=)[^&\s"]+', caseSensitive: false),
+      (m) => '${m[1]}***',
+    )
+    .replaceAllMapped(RegExp(r'(/live/)[^/\s]+/[^/\s]+(/)'), (m) => '${m[1]}***/***${m[2]}');
+
 class XtreamClient {
   XtreamClient(String url, this._username, this._password, {this.userAgent = 'Mozilla/5.0'})
     : base = url.trim().replaceAll(RegExp(r'/+$'), '');
@@ -47,10 +56,19 @@ class XtreamClient {
   DateTime _last = DateTime.fromMillisecondsSinceEpoch(0);
   Future<void> _queue = Future.value();
 
+  /// The text with the login taken out, in every form it travels in: as typed, as a URL component and as a query value
+  /// (a space becomes "+", "!*'()" are percent-encoded there, which is what package:http's errors carry).
   String scrub(String text) {
-    var out = text;
-    for (final secret in {_password, Uri.encodeComponent(_password), _username, Uri.encodeComponent(_username)}) {
-      if (secret.isNotEmpty) out = out.replaceAll(secret, '***');
+    var out = redactSecrets(text);
+    for (final secret in {
+      _password,
+      Uri.encodeComponent(_password),
+      Uri.encodeQueryComponent(_password),
+      _username,
+      Uri.encodeComponent(_username),
+      Uri.encodeQueryComponent(_username),
+    }) {
+      if (secret.length >= 2) out = out.replaceAll(secret, '***');
     }
     return out;
   }

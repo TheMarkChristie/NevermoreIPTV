@@ -15,9 +15,12 @@
 library;
 
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 
+import 'library.dart';
 import 'model.dart';
 import 'sources.dart';
 
@@ -97,12 +100,35 @@ List<WebSite> sitesFromJson(Object? data) => [
         ),
 ];
 
-Future<Object?> _houseFile() async {
+Future<Object?>? _houseMemo;
+
+/// The house file: the one built into this copy, kept in the app's own folder once seen, so a copy built without it
+/// (a public build installed over this one) does not take the household's preset and sites away (review, 24 Oct 2026).
+Future<Object?> _houseFile() => _houseMemo ??= _readHouseFile();
+
+Future<Object?> _readHouseFile() async {
+  File? kept;
   try {
-    return jsonDecode(await rootBundle.loadString('assets/house/presets.json'));
+    kept = File('${(await getApplicationSupportDirectory()).path}${Platform.pathSeparator}presets.json');
   } catch (_) {
-    return null;
+    // no folder (a test): the bundled file alone
   }
+  try {
+    final text = await rootBundle.loadString('assets/house/presets.json');
+    final data = jsonDecode(text);
+    if (kept != null && (!await kept.exists() || await kept.readAsString() != text)) {
+      await kept.writeAsString(text, flush: true);
+    }
+    return data;
+  } catch (_) {
+    // not built in: the copy kept earlier, if any
+  }
+  try {
+    if (kept != null && await kept.exists()) return jsonDecode(await kept.readAsString());
+  } catch (_) {
+    // unreadable
+  }
+  return null;
 }
 
 /// The presets built into this copy of the app; none when it was built without the file.
@@ -134,9 +160,35 @@ class PresetResult {
   final List<String> missing;
 }
 
-/// The source's new selection: only what the preset names, in its order.
-PresetResult applyPreset(Catalog catalog, Preset p) {
-  final sel = Selection();
+/// A preset code handed in by the install script (`-Preset`): applied to its source when the TV has it, once that
+/// source's list is read. Returns a line for the notice on the TV ("preset My provider: 242 channels"), or why not.
+Future<String> applyPresetCode(Library lib, String code) async {
+  final p = (await loadPresets()).where((p) => p.code == code.trim()).firstOrNull;
+  if (p == null) return 'no preset has that code';
+  final source = presetSource(p, lib.sources);
+  if (source == null) return 'preset ${p.name}: its login is not on this TV';
+  await lib.whenListRead(source.id).timeout(const Duration(seconds: 90), onTimeout: () {});
+  final catalog = lib.catalogs[source.id];
+  if (catalog == null) return 'preset ${p.name}: the channel list could not be read';
+  final result = applyPreset(catalog, p, previous: lib.selectionOf(source.id));
+  if (result.shown == 0) return 'preset ${p.name}: nothing matched, channels left as they were';
+  await lib.setSelection(source.id, result.selection);
+  return 'preset ${p.name}: ${result.shown} channels';
+}
+
+/// The source's new selection: what the preset names, in its order. The viewer's own renames, hand-picked guides and
+/// channel order from [previous] are kept (review, 24 Oct 2026); the ticks are the preset's alone.
+PresetResult applyPreset(Catalog catalog, Preset p, {Selection? previous}) {
+  final sel = Selection(channelOrder: previous == null ? null : List.of(previous.channelOrder));
+  if (previous != null) {
+    for (final e in previous.channels.entries) {
+      final own = {
+        for (final k in const ['name', 'guide'])
+          if (e.value[k] != null) k: e.value[k]!,
+      };
+      if (own.isNotEmpty) sel.channels[e.key] = own;
+    }
+  }
   final missing = <String>[];
   for (final pg in p.groups) {
     final wanted = pg.group.toLowerCase();
@@ -159,7 +211,7 @@ PresetResult applyPreset(Catalog catalog, Preset p) {
       final hits = inGroup.where((c) => c.name.toLowerCase().contains(word)).toList();
       if (hits.isEmpty) missing.add('${pg.group}: $word');
       for (final c in hits) {
-        sel.channels[c.key] = {'on': true};
+        sel.channels[c.key] = {...?sel.channels[c.key], 'on': true};
       }
     }
   }

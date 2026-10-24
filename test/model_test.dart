@@ -63,8 +63,11 @@ void main() {
     expect(cat.skipped, 2); // YouTube and DASH
     expect([for (final g in cat.groups) g.name], ['UK', 'Norway', 'Ireland']);
     final keys = [for (final c in cat.channels) c.key];
-    expect(keys.first, 'uk/bbc-one');
-    expect(keys.last, 'uk/bbc-one~2');
+    // a name two entries share keys both by their address (so a reordered playlist moves no ticks); a unique name
+    // keeps its plain key
+    expect(keys.first, startsWith('uk/bbc-one~'));
+    expect(keys.last, startsWith('uk/bbc-one~'));
+    expect(keys.first, isNot(keys.last));
     expect(keys.toSet().length, keys.length);
   });
 

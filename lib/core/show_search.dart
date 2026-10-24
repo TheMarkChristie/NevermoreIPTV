@@ -48,7 +48,8 @@ List<ShowHit> searchShows(Map<String, List<Programme>> programmes, String query,
 String dayAndTime(int epochSeconds, int now) {
   final d = DateTime.fromMillisecondsSinceEpoch(epochSeconds * 1000);
   final n = DateTime.fromMillisecondsSinceEpoch(now * 1000);
-  final days = DateTime(d.year, d.month, d.day).difference(DateTime(n.year, n.month, n.day)).inDays;
+  // calendar days: local midnights are 23 hours apart on the day the clocks go forward, which .inDays rounds to none
+  final days = DateTime.utc(d.year, d.month, d.day).difference(DateTime.utc(n.year, n.month, n.day)).inDays;
   final day = switch (days) {
     0 => 'Today',
     1 => 'Tomorrow',

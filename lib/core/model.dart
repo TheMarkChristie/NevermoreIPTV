@@ -42,6 +42,7 @@ class Channel {
     this.userAgent,
     this.referrer,
     this.radio = false,
+    this.country,
   });
 
   /// Stable inside its source: the Xtream stream id, or the playlist's group + name.
@@ -70,6 +71,9 @@ class Channel {
   /// Xtream's stream_type "radio_streams" (a provider that says so).
   final bool radio;
 
+  /// The country the channel belongs to (ISO code, "DK"), when its playlist, name or group says: see [countryHint].
+  final String? country;
+
   Map<String, dynamic> toJson() => {
     'key': key,
     'name': name,
@@ -83,6 +87,7 @@ class Channel {
     'user_agent': ?userAgent,
     'referrer': ?referrer,
     if (radio) 'radio': true,
+    'country': ?country,
   };
 
   factory Channel.fromJson(Map<String, dynamic> j) => Channel(
@@ -98,6 +103,7 @@ class Channel {
     userAgent: j['user_agent'] as String?,
     referrer: j['referrer'] as String?,
     radio: j['radio'] == true,
+    country: j['country'] as String?,
   );
 }
 
@@ -168,10 +174,11 @@ Catalog catalogFromXtream(List<Map<String, dynamic>> categories, List<Map<String
     if (sid.isEmpty) continue;
     var gid = _str(s['category_id']);
     if (!known.contains(gid)) gid = '_other';
+    final name = _blank(s['name']) ?? sid;
     channels.add(
       Channel(
         sid,
-        _blank(s['name']) ?? sid,
+        name,
         gid,
         i,
         logo: _blank(s['stream_icon']),
@@ -179,6 +186,7 @@ Catalog catalogFromXtream(List<Map<String, dynamic>> categories, List<Map<String
         number: _int(s['num']),
         streamId: sid,
         radio: type == 'radio_streams',
+        country: countryHint(name: name),
       ),
     );
   }
@@ -259,13 +267,30 @@ String foldAscii(String text) {
 
 String _slug(String text) => foldAscii(text).replaceAll(RegExp(r'[^a-z0-9]+'), '-').replaceAll(RegExp(r'^-+|-+$'), '');
 
+/// A short hash that is the same on every start (FNV-1a, 32 bits, as hex), for keys that must survive restarts.
+String stableHash(String text) {
+  var h = 0x811c9dc5;
+  for (final unit in text.codeUnits) {
+    h = ((h ^ unit) * 0x01000193) & 0xffffffff;
+  }
+  return h.toRadixString(16).padLeft(8, '0');
+}
+
 Catalog catalogFromM3u(Iterable<M3uEntry> entries, [List<String>? headerGuideUrls]) {
+  final list = entries.toList();
   final groups = <String, Group>{};
   final channels = <Channel>[];
-  final used = <String, int>{};
+  // how many entries share each group + name: a name keys a channel only when it is the only one of its kind
+  final shared = <String, int>{};
+  for (final e in list) {
+    if (!playableUrl(e.url)) continue;
+    final base = '${_slug(e.group ?? 'Other')}/${_slug(tidyName(e.name))}';
+    shared[base] = (shared[base] ?? 0) + 1;
+  }
+  final usedKeys = <String>{};
   var skipped = 0;
   var i = -1;
-  for (final e in entries) {
+  for (final e in list) {
     i++;
     if (!playableUrl(e.url)) {
       skipped++;
@@ -274,9 +299,16 @@ Catalog catalogFromM3u(Iterable<M3uEntry> entries, [List<String>? headerGuideUrl
     final gname = e.group ?? 'Other';
     groups.putIfAbsent(gname, () => Group(gname, gname, groups.length));
     final slug = _slug(tidyName(e.name));
-    final base = '${_slug(gname)}/${slug.isEmpty ? '$i' : slug}';
-    used[base] = (used[base] ?? 0) + 1;
-    final key = used[base] == 1 ? base : '$base~${used[base]}';
+    final base = '${_slug(gname)}/$slug';
+    // the plain key where the name is the only one of its kind, so earlier ticks survive; a name that folds to nothing,
+    // or one shared with another entry, is keyed by its address, which stays put when the playlist is reordered
+    // (review, 24 Oct 2026)
+    var key = slug.isNotEmpty && shared[base] == 1
+        ? base
+        : '${_slug(gname)}/${slug.isEmpty ? 'x' : slug}~${stableHash(e.url)}';
+    while (!usedKeys.add(key)) {
+      key = '$key~';
+    }
     channels.add(
       Channel(
         key,
@@ -289,6 +321,7 @@ Catalog catalogFromM3u(Iterable<M3uEntry> entries, [List<String>? headerGuideUrl
         url: e.url,
         userAgent: e.userAgent,
         referrer: e.referrer,
+        country: countryHint(name: e.name, tvgCountry: e.country, group: gname),
       ),
     );
   }
@@ -517,6 +550,81 @@ String tidyName(String name) {
   return stripped.isEmpty ? text : stripped;
 }
 
+const _countryNames = {
+  'uk': 'GB',
+  'gb': 'GB',
+  'united kingdom': 'GB',
+  'great britain': 'GB',
+  'england': 'GB',
+  'scotland': 'GB',
+  'wales': 'GB',
+  'northern ireland': 'GB',
+  'ireland': 'IE',
+  'ie': 'IE',
+  'norway': 'NO',
+  'no': 'NO',
+  'sweden': 'SE',
+  'se': 'SE',
+  'denmark': 'DK',
+  'dk': 'DK',
+  'finland': 'FI',
+  'fi': 'FI',
+  'iceland': 'IS',
+  'is': 'IS',
+  'germany': 'DE',
+  'de': 'DE',
+  'austria': 'AT',
+  'at': 'AT',
+  'switzerland': 'CH',
+  'ch': 'CH',
+  'netherlands': 'NL',
+  'nl': 'NL',
+  'belgium': 'BE',
+  'be': 'BE',
+  'france': 'FR',
+  'fr': 'FR',
+  'spain': 'ES',
+  'es': 'ES',
+  'italy': 'IT',
+  'it': 'IT',
+  'portugal': 'PT',
+  'pt': 'PT',
+  'poland': 'PL',
+  'pl': 'PL',
+  'usa': 'US',
+  'us': 'US',
+  'united states': 'US',
+  'canada': 'CA',
+  'ca': 'CA',
+  'australia': 'AU',
+  'au': 'AU',
+  'new zealand': 'NZ',
+  'nz': 'NZ',
+};
+
+/// The country a channel belongs to, as an ISO code: the playlist's tvg-country, a prefix on the name ("DK: TV3",
+/// "US-S: NHL NETWORK", "CA | NBA TV"), else its group when that names a country ("Denmark"). Null when nothing says.
+/// A name alone is not enough: TV3 is a different channel in Norway, Sweden and Denmark (review, 24 Oct 2026).
+String? countryHint({required String name, String? tvgCountry, String? group}) {
+  final given = (tvgCountry ?? '').trim().toLowerCase();
+  if (given.isNotEmpty) return _countryNames[given] ?? (given.length == 2 ? given.toUpperCase() : null);
+  final m = _prefix.firstMatch(withoutMarks(name));
+  if (m != null) {
+    final tag = m.group(0)!.replaceAll(RegExp(r'[:|\s+]'), '').split(RegExp(r'[-/]')).first.toLowerCase();
+    final code = _countryNames[tag];
+    if (code != null) return code;
+  }
+  return _countryNames[(group ?? '').trim().toLowerCase()];
+}
+
+/// The country of an epgshare01 guide file from its label ("epgshare01 UK1" -> GB); null for any other guide.
+String? guideCountry(String label) {
+  final m = RegExp(r'^epgshare01 ([A-Za-z]{2})\d').firstMatch(label);
+  if (m == null) return null;
+  final tag = m.group(1)!.toLowerCase();
+  return _countryNames[tag] ?? tag.toUpperCase();
+}
+
 // epgshare01's own naming (checked 19 Oct 2026): the Norway file says "NRK1 Norway (NO,NO)", the Sweden file
 // "[DR1DK] DR1"; the UK file uses plain names. A country is only taken off before such a "(XX,YY)" ending, and the UK's
 // nations are not countries here, so "BBC One Scotland (GB,EN)" keeps its Scotland.
@@ -595,7 +703,19 @@ Map<String, (int, String, String)> matchGuides(Iterable<Channel> channels, Selec
     }
     if (found == null) {
       final keys = {normName(displayName(c, sel)), normName(c.name)}..remove('');
-      for (var i = 0; i < norms.length && found == null; i++) {
+      // by name: the channel's own country's file first, then the guides that belong to no country (the provider's, a
+      // playlist's), and another country's file only when the channel's country is unknown
+      final hint = c.country;
+      final order = [
+        for (var i = 0; i < norms.length; i++)
+          if (hint != null && guideCountry(sources[i].label) == hint) i,
+        for (var i = 0; i < norms.length; i++)
+          if (guideCountry(sources[i].label) == null) i,
+        for (var i = 0; i < norms.length; i++)
+          if (hint == null && guideCountry(sources[i].label) != null) i,
+      ];
+      for (final i in order) {
+        if (found != null) break;
         for (final k in keys) {
           final gid = norms[i][k];
           if (gid != null) {

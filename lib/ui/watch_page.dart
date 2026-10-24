@@ -15,7 +15,10 @@ import 'package:video_player/video_player.dart';
 
 import '../core/library.dart';
 import '../core/model.dart';
+import '../core/player_state.dart';
 import '../core/show_search.dart';
+import '../core/presets.dart';
+import '../core/setup_channel.dart';
 import '../core/vpn.dart';
 import '../core/web.dart';
 import 'guide_view.dart';
@@ -28,7 +31,10 @@ const _startTimeout = Duration(seconds: 10);
 const _zapSettle = Duration(milliseconds: 600);
 
 class WatchPage extends StatefulWidget {
-  const WatchPage({super.key});
+  const WatchPage({super.key, this.notice});
+
+  /// Shown for a few seconds when the TV opens: what the install script set up.
+  final String? notice;
 
   @override
   State<WatchPage> createState() => _WatchPageState();
@@ -40,6 +46,9 @@ class _WatchPageState extends State<WatchPage> {
   PlayableChannel? _current;
   int _token = 0;
   bool _starting = false;
+
+  /// Which try of three is starting (said under the spinner, so a long start is not a silent one).
+  int _attempt = 0;
   (String, String)? _error;
 
   List<Category> _categories = [];
@@ -67,17 +76,54 @@ class _WatchPageState extends State<WatchPage> {
     _onLibrary();
     _life = AppLifecycleListener(onHide: _onHide, onShow: _onShow);
     unawaited(_startLast());
-    unawaited(
-      webCategory().then((c) {
-        if (mounted) setState(() => _web = c);
-      }),
-    );
+    unawaited(_loadWeb());
+    setupNotices.addListener(_onNotice);
+    if (widget.notice != null) _showNotice(widget.notice!);
   }
 
   /// The guide's Web category (the house file's sites), after the TV's own.
   Category? _web;
 
-  List<Category> get _guideCategories => [..._categories, ?_web];
+  /// The TV's categories with the Web one after them: one list object until either changes, because GuideView rebuilds
+  /// its grid whenever it is handed a different list (review, 24 Oct 2026).
+  List<Category> _guideCategories = const [];
+
+  void _mergeCategories() => _guideCategories = [..._categories, ?_web];
+
+  /// The Web category at once, with the icons found on earlier starts; icons still missing arrive in the background.
+  Future<void> _loadWeb() async {
+    final sites = await loadSites();
+    if (sites.isEmpty || !mounted) return;
+    setState(() {
+      _web = webCategory(sites, library.siteIcons);
+      _mergeCategories();
+    });
+    final found = await findSiteIcons(sites, library.siteIcons);
+    if (found.isEmpty || !mounted) return;
+    await library.setSiteIcons({...library.siteIcons, ...found});
+    if (!mounted) return;
+    setState(() {
+      _web = webCategory(sites, library.siteIcons);
+      _mergeCategories();
+    });
+  }
+
+  String? _notice;
+  Timer? _noticeTimer;
+
+  void _onNotice() {
+    final text = setupNotices.value;
+    if (text != null && mounted) _showNotice(text);
+  }
+
+  /// A line at the top for a few seconds (what the install script set up).
+  void _showNotice(String text) {
+    _noticeTimer?.cancel();
+    setState(() => _notice = text);
+    _noticeTimer = Timer(const Duration(seconds: 8), () {
+      if (mounted) setState(() => _notice = null);
+    });
+  }
 
   @override
   void dispose() {
@@ -88,6 +134,8 @@ class _WatchPageState extends State<WatchPage> {
     _zapTimer?.cancel();
     _flashTimer?.cancel();
     _backTimer?.cancel();
+    _noticeTimer?.cancel();
+    setupNotices.removeListener(_onNotice);
     _videoFocus.dispose();
     unawaited(_stopPlayer());
     super.dispose();
@@ -101,7 +149,22 @@ class _WatchPageState extends State<WatchPage> {
     if (on == _vpnWasOn) return;
     _vpnWasOn = on;
     final ch = _current;
-    if (ch != null && !_away && mounted) unawaited(_play(ch));
+    if (ch == null || _away || !mounted) return;
+    if (!on && vpn.state == VpnState.failed) {
+      // the tunnel went away under a playing channel: stop, rather than play on over the real address unnoticed
+      _token++;
+      _zapTimer?.cancel();
+      unawaited(_stopPlayer());
+      setState(() {
+        _starting = false;
+        _error = (
+          'The VPN dropped',
+          '${vpn.error ?? 'It stopped by itself.'}\nOK for the guide, then VPN to start it again.',
+        );
+      });
+      return;
+    }
+    unawaited(_play(ch));
   }
 
   void _onLibrary() {
@@ -116,6 +179,7 @@ class _WatchPageState extends State<WatchPage> {
     setState(() {
       _categories = categories;
       _all = all;
+      _mergeCategories();
       // the playing channel's entry, renamed or moved
       final uid = _current?.uid;
       if (uid != null) _current = all.where((c) => c.uid == uid).firstOrNull ?? _current;
@@ -145,6 +209,7 @@ class _WatchPageState extends State<WatchPage> {
   void _onHide() {
     _away = true;
     _token++;
+    _zapTimer?.cancel();
     unawaited(_stopPlayer());
   }
 
@@ -165,7 +230,7 @@ class _WatchPageState extends State<WatchPage> {
   void _keepAwake(bool on) {
     if (on == _awake) return;
     _awake = on;
-    unawaited(_screen.invokeMethod<void>('awake', on).catchError((_) {}));
+    unawaited(_screen.invokeMethod<void>('awake', {'who': 'play', 'on': on}).catchError((_) {}));
   }
 
   Future<void> _stopPlayer() async {
@@ -181,9 +246,14 @@ class _WatchPageState extends State<WatchPage> {
   void _onPlayerValue() {
     final p = _player;
     final ch = _current;
-    if (p == null || ch == null || !p.value.hasError || _starting) return;
-    // the stream dropped while watching: start it again (with the usual retries)
-    unawaited(_play(ch, attempt: 1, error: p.value.errorDescription));
+    if (p == null || ch == null || _starting) return;
+    final v = p.value;
+    // the stream dropped while watching, or ended without an error (a live stream has no end: the provider closed it):
+    // start it again, with the usual retries
+    if (!streamEnded(hasError: v.hasError, completed: v.isCompleted, playing: v.isPlaying, buffering: v.isBuffering)) {
+      return;
+    }
+    unawaited(_play(ch, attempt: 1, error: v.errorDescription ?? 'the stream ended'));
   }
 
   /// [quick]: no retries (the first start moves on to its next candidate instead).
@@ -195,6 +265,7 @@ class _WatchPageState extends State<WatchPage> {
     setState(() {
       _current = ch;
       _starting = true;
+      _attempt = attempt;
       _error = null;
     });
     if (attempt == 0) _showInfo();
@@ -214,6 +285,7 @@ class _WatchPageState extends State<WatchPage> {
       await player.initialize().timeout(_startTimeout);
       if (token != _token) return;
       await player.play();
+      if (token != _token) return;
       _keepAwake(true);
       // sound and no picture: a radio channel, shown with the radio sign from now on
       unawaited(library.markRadio(ch.uid, player.value.size.width == 0).catchError((_) {}));
@@ -234,7 +306,10 @@ class _WatchPageState extends State<WatchPage> {
       return;
     }
     _autoStart = null;
-    if (!quick && attempt < 2) {
+    // a second 10 s timeout has shown that the network is not answering: no third try, the card comes sooner
+    final timedOut = failure.contains('TimeoutException');
+    if (!quick && attempt < 2 && !(timedOut && attempt == 1)) {
+      if (mounted) setState(() => _attempt = attempt + 1);
       await Future<void>.delayed(Duration(milliseconds: attempt == 0 ? 1500 : 3000));
       if (token == _token && mounted) await _play(ch, attempt: attempt + 1, error: failure);
       return;
@@ -301,6 +376,7 @@ class _WatchPageState extends State<WatchPage> {
       unawaited(_openSettings());
       return;
     }
+    _infoTimer?.cancel();
     setState(() {
       _guideOpen = true;
       _info = false;
@@ -321,8 +397,11 @@ class _WatchPageState extends State<WatchPage> {
 
   /// Stops playback (one connection: nothing plays behind other screens), opens [page], and on return plays on.
   Future<void> _leaveFor(Widget page) async {
+    // a second OK while the stop is under way (a double press) would push a second page
+    if (_away) return;
     _token++;
     _away = true;
+    _zapTimer?.cancel();
     await _stopPlayer();
     if (!mounted) return;
     setState(() => _guideOpen = false);
@@ -385,9 +464,11 @@ class _WatchPageState extends State<WatchPage> {
     }
     final now = DateTime.now();
     if (_lastBack != null && now.difference(_lastBack!) < const Duration(seconds: 2)) {
+      _token++;
+      _zapTimer?.cancel();
       unawaited(_stopPlayer());
-      // leaving the app takes the VPN down too: nothing else on the TV uses it
-      unawaited(vpn.turnOff().whenComplete(SystemNavigator.pop));
+      // leaving the app takes the VPN down too: nothing else on the TV uses it (and not for long: the process ends)
+      unawaited(vpn.turnOff().timeout(const Duration(seconds: 5), onTimeout: () {}).whenComplete(SystemNavigator.pop));
       return;
     }
     _lastBack = now;
@@ -402,13 +483,11 @@ class _WatchPageState extends State<WatchPage> {
 
   Widget _video(TextTheme text, {bool small = false}) {
     final player = _player;
-    if (player == null) {
-      return _starting ? const Center(child: CircularProgressIndicator()) : const SizedBox.expand();
-    }
+    if (player == null) return _starting ? _spinner(text, small) : const SizedBox.expand();
     return ValueListenableBuilder<VideoPlayerValue>(
       valueListenable: player,
       builder: (context, v, _) {
-        if (!v.isInitialized) return const Center(child: CircularProgressIndicator());
+        if (!v.isInitialized) return _spinner(text, small);
         if (v.size.width == 0) {
           return Center(
             child: Column(
@@ -424,6 +503,25 @@ class _WatchPageState extends State<WatchPage> {
           child: AspectRatio(aspectRatio: v.aspectRatio, child: VideoPlayer(player)),
         );
       },
+    );
+  }
+
+  /// The spinner with a word on what is happening: a start can take a while on a slow network, and three tries longer.
+  Widget _spinner(TextTheme text, bool small) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(),
+          if (!small) ...[
+            const SizedBox(height: 12),
+            Text(
+              _attempt == 0 ? 'Starting ${_current?.name ?? ''}...' : 'Trying again (${_attempt + 1} of 3)...',
+              style: text.bodyMedium?.copyWith(color: tvMuted),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -496,6 +594,19 @@ class _WatchPageState extends State<WatchPage> {
                   onSettings: () => unawaited(_openSettings()),
                   onManage: (ch) => unawaited(_openManage(ch)),
                 ),
+              if (_notice != null)
+                Positioned(
+                  top: overscanOf(context).top,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                      decoration: BoxDecoration(color: tvSurface, borderRadius: BorderRadius.circular(20)),
+                      child: Text(_notice!, style: text.bodyMedium),
+                    ),
+                  ),
+                ),
               if (_backHint)
                 Positioned(
                   bottom: 40,
@@ -546,12 +657,12 @@ class _WatchPageState extends State<WatchPage> {
             const SizedBox(height: 6),
             Text(
               detail,
-              style: text.bodySmall?.copyWith(color: tvMuted),
+              style: text.bodyMedium?.copyWith(color: tvMuted),
               maxLines: 4,
               overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 10),
-            Text('Up / Down for another channel, OK for the guide.', style: text.bodySmall),
+            Text('Up / Down for another channel, OK for the guide.', style: text.bodyMedium),
           ],
         ),
       ),

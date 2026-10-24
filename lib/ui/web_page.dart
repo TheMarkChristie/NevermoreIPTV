@@ -3,9 +3,11 @@
 /// pointer; pop-ups and new tabs blocked.
 ///
 /// The arrows move the pointer (faster while held), OK clicks where it points, pushing against the top or bottom edge
-/// scrolls (as do channel up / down), Back goes back a page and from the first page to the TV. A click into a text box
-/// leaves the keys with the page for typing; Back gives them to the pointer again. Pages cannot open windows by
-/// themselves; a link that opens a new tab opens here. The screen stays on while a site is open.
+/// scrolls (as do channel up / down), Back goes back a page, Back twice within two seconds leaves the site (a page
+/// that sends the browser straight on again would otherwise trap Back in its history), and from the first page Back
+/// returns to the TV. A click into a text box leaves the keys with the page for typing; Back gives them to the pointer
+/// again. Pages cannot open windows by themselves; a link that opens a new tab opens here. The screen stays on while a
+/// site is open.
 library;
 
 import 'dart:async';
@@ -40,6 +42,9 @@ class _WebPageState extends State<WebPage> {
   bool _hint = true;
   bool _fullScreen = false;
   Timer? _hintTimer;
+  DateTime? _lastBack;
+  bool _leaveHint = false;
+  Timer? _leaveTimer;
 
   @override
   void initState() {
@@ -55,29 +60,53 @@ class _WebPageState extends State<WebPage> {
           onPageStarted: (_) {
             if (mounted) setState(() => _error = null);
           },
+          onUrlChange: (_) {
+            if (mounted && _error != null) setState(() => _error = null);
+          },
+          // a mailto:, tel: or app link has nowhere to go on a TV, and would only leave an error card on the page
+          onNavigationRequest: (r) =>
+              r.url.startsWith('http://') || r.url.startsWith('https://') || r.url.startsWith('about:')
+              ? NavigationDecision.navigate
+              : NavigationDecision.prevent,
           onWebResourceError: (e) {
             if (e.isForMainFrame == true && mounted) setState(() => _error = e.description);
           },
         ),
-      )
-      ..loadRequest(Uri.parse(widget.url));
-    final android = _web.platform;
-    if (android is AndroidWebViewController) {
-      unawaited(android.setMediaPlaybackRequiresUserGesture(false));
-      unawaited(android.setCustomWidgetCallbacks(onShowCustomWidget: _showFull, onHideCustomWidget: _hideFull));
-      // the pop-up blocker: the plug-in lets scripts open windows by themselves (and loads them over the page)
-      unawaited(_native.invokeMethod<void>('blockPopups', android.webViewIdentifier).catchError((_) {}));
-    }
-    unawaited(_screen.invokeMethod<void>('awake', true).catchError((_) {}));
+      );
+    unawaited(_prepareAndLoad());
+    unawaited(_screen.invokeMethod<void>('awake', {'who': 'web', 'on': true}).catchError((_) {}));
     _hintTimer = Timer(const Duration(seconds: 6), () {
       if (mounted) setState(() => _hint = false);
     });
   }
 
+  /// The Android settings, then the page: the pop-up blocker must be set before any script of the page can run.
+  Future<void> _prepareAndLoad() async {
+    final android = _web.platform;
+    if (android is AndroidWebViewController) {
+      await android.setMediaPlaybackRequiresUserGesture(false);
+      await android.setCustomWidgetCallbacks(onShowCustomWidget: _showFull, onHideCustomWidget: _hideFull);
+      // club sites keep the sign-in in a cookie and play from another domain's frame, which must see that cookie
+      final cookies = WebViewCookieManager().platform;
+      if (cookies is AndroidWebViewCookieManager) await cookies.setAcceptThirdPartyCookies(android, true);
+      // a plain-http stream on an https page
+      await android.setMixedContentMode(MixedContentMode.compatibilityMode);
+      // the pop-up blocker: the plug-in lets scripts open windows by themselves (and loads them over the page)
+      try {
+        final blocked = await _native.invokeMethod<bool>('blockPopups', android.webViewIdentifier);
+        if (blocked != true) debugPrint('browser: the pop-up blocker was not set');
+      } catch (err) {
+        debugPrint('browser: the pop-up blocker was not set: $err');
+      }
+    }
+    await _web.loadRequest(Uri.parse(widget.url));
+  }
+
   @override
   void dispose() {
     _hintTimer?.cancel();
-    unawaited(_screen.invokeMethod<void>('awake', false).catchError((_) {}));
+    _leaveTimer?.cancel();
+    unawaited(_screen.invokeMethod<void>('awake', {'who': 'web', 'on': false}).catchError((_) {}));
     super.dispose();
   }
 
@@ -113,16 +142,25 @@ class _WebPageState extends State<WebPage> {
   }
 
   Future<void> _back() async {
-    if (await _web.canGoBack()) {
+    final now = DateTime.now();
+    final again = _lastBack != null && now.difference(_lastBack!) < const Duration(seconds: 2);
+    _lastBack = now;
+    if (!again && await _web.canGoBack()) {
       await _web.goBack();
-    } else if (mounted) {
-      Navigator.of(context).pop();
+      _leaveTimer?.cancel();
+      if (mounted) setState(() => _leaveHint = true);
+      _leaveTimer = Timer(const Duration(seconds: 2), () {
+        if (mounted) setState(() => _leaveHint = false);
+      });
+      return;
     }
+    if (mounted) Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
+    final margin = overscanOf(context);
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -148,11 +186,11 @@ class _WebPageState extends State<WebPage> {
                 ),
               ),
             ),
-          if (_hint)
+          if (_hint || _leaveHint)
             Positioned(
               left: 0,
               right: 0,
-              bottom: 24,
+              bottom: margin.bottom,
               child: IgnorePointer(
                 child: Center(
                   child: Container(
@@ -161,7 +199,12 @@ class _WebPageState extends State<WebPage> {
                       color: tvBackground.withAlpha(225),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Text('Arrows move the pointer  -  OK clicks  -  Back goes back', style: text.bodyMedium),
+                    child: Text(
+                      _leaveHint
+                          ? 'Back again to leave ${widget.name}'
+                          : 'Arrows move the pointer  -  OK clicks  -  Back goes back',
+                      style: text.bodyMedium,
+                    ),
                   ),
                 ),
               ),
@@ -202,8 +245,10 @@ class _PointerSurfaceState extends State<PointerSurface> {
   Timer? _idle;
   static const _hideAfter = Duration(seconds: 3);
 
-  /// Touches made here, numbered well clear of real ones.
+  /// Touches made here, numbered well clear of real ones, and timed from one clock (a page reads the times of a
+  /// gesture: a tap from a long press, a fling from a held drag).
   static int _touch = 900000;
+  static final _clock = Stopwatch()..start();
 
   @override
   void initState() {
@@ -276,17 +321,22 @@ class _PointerSurfaceState extends State<PointerSurface> {
 
   Offset _global(Offset local) => (context.findRenderObject() as RenderBox?)?.localToGlobal(local) ?? local;
 
-  /// A tap where the pointer is, as a finger would make it (so the page counts it as the viewer's).
+  Duration get _now => _clock.elapsed;
+
+  /// A tap where the pointer is, as a finger would make it (so the page counts it as the viewer's). Not during a
+  /// scroll: a second finger down would be a pinch.
   Future<void> _click() async {
     final at = _at;
-    if (at == null) return;
+    if (at == null || _scrolling) return;
     final p = _global(at);
     final id = ++_touch;
     GestureBinding.instance.handlePointerEvent(
-      PointerDownEvent(pointer: id, position: p, kind: PointerDeviceKind.touch),
+      PointerDownEvent(timeStamp: _now, pointer: id, position: p, kind: PointerDeviceKind.touch),
     );
     await Future<void>.delayed(const Duration(milliseconds: 60));
-    GestureBinding.instance.handlePointerEvent(PointerUpEvent(pointer: id, position: p, kind: PointerDeviceKind.touch));
+    GestureBinding.instance.handlePointerEvent(
+      PointerUpEvent(timeStamp: _now, pointer: id, position: p, kind: PointerDeviceKind.touch),
+    );
     await Future<void>.delayed(const Duration(milliseconds: 400));
     if (!mounted) return;
     if (await _intoTextBox()) {
@@ -305,12 +355,13 @@ class _PointerSurfaceState extends State<PointerSurface> {
     final id = ++_touch;
     const steps = 8;
     GestureBinding.instance.handlePointerEvent(
-      PointerDownEvent(pointer: id, position: from, kind: PointerDeviceKind.touch),
+      PointerDownEvent(timeStamp: _now, pointer: id, position: from, kind: PointerDeviceKind.touch),
     );
     for (var i = 1; i <= steps; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 16));
       GestureBinding.instance.handlePointerEvent(
         PointerMoveEvent(
+          timeStamp: _now,
           pointer: id,
           position: from + travel * (i / steps),
           delta: travel / steps.toDouble(),
@@ -321,7 +372,7 @@ class _PointerSurfaceState extends State<PointerSurface> {
     // held still before lifting, so the page does not fling on
     await Future<void>.delayed(const Duration(milliseconds: 80));
     GestureBinding.instance.handlePointerEvent(
-      PointerUpEvent(pointer: id, position: from + travel, kind: PointerDeviceKind.touch),
+      PointerUpEvent(timeStamp: _now, pointer: id, position: from + travel, kind: PointerDeviceKind.touch),
     );
     _scrolling = false;
     if (mounted && !_typing) _keys.requestFocus();
@@ -353,6 +404,7 @@ class _PointerSurfaceState extends State<PointerSurface> {
 
   @override
   Widget build(BuildContext context) {
+    final margin = overscanOf(context);
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -384,8 +436,8 @@ class _PointerSurfaceState extends State<PointerSurface> {
                   ),
                 if (_typing)
                   Positioned(
-                    top: 16,
-                    right: 16,
+                    top: margin.top,
+                    right: margin.right,
                     child: IgnorePointer(
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),

@@ -23,6 +23,7 @@ class _VpnAddPageState extends State<VpnAddPage> {
   String? _url;
   String? _problem;
   String? _saved;
+  bool _closed = false;
 
   @override
   void initState() {
@@ -47,6 +48,11 @@ class _VpnAddPageState extends State<VpnAddPage> {
     _sub = server.received.listen((name) {
       if (mounted) setState(() => _saved = name.isEmpty ? 'the file' : name);
     });
+    unawaited(
+      server.closed.then((_) {
+        if (mounted) setState(() => _closed = true);
+      }),
+    );
     if (!mounted) {
       await server.stop();
       return;
@@ -68,64 +74,75 @@ class _VpnAddPageState extends State<VpnAddPage> {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final url = _url;
-    return Scaffold(
-      backgroundColor: tvBackground,
-      body: Padding(
-        padding: overscanOf(context),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(child: Text('Add a WireGuard file', style: text.headlineSmall)),
-                TvButton(label: 'Done', autofocus: true, onPressed: () => Navigator.of(context).pop()),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Any VPN that gives WireGuard files works (Proton, Mullvad, Surfshark, Windscribe...). Download one for a '
-              'server outside the UK, close to you for the best picture. Then, on a phone or computer on the same '
-              'network, open this address (or scan the code) and send the file:',
-              style: text.bodyMedium?.copyWith(color: tvMuted),
-            ),
-            const SizedBox(height: 16),
-            if (_problem != null) Text(_problem!, style: text.titleMedium?.copyWith(color: tvAlert)),
-            if (url == null && _problem == null) const CircularProgressIndicator(),
-            if (url != null)
-              Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      color: Colors.white,
-                      padding: const EdgeInsets.all(10),
-                      child: QrImageView(data: url, size: 180, backgroundColor: Colors.white),
-                    ),
-                    const SizedBox(width: 24),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SelectableText(url, style: text.headlineSmall),
-                          const SizedBox(height: 12),
-                          Text(
-                            'The page only works while this screen is open.',
-                            style: text.bodySmall?.copyWith(color: tvMuted),
-                          ),
-                          const SizedBox(height: 16),
-                          if (_saved != null) ...[
-                            Text('Saved: $_saved', style: text.titleLarge?.copyWith(color: tvAccent)),
-                            const SizedBox(height: 4),
-                            Text('Press Done, then VPN in the guide to turn it on.', style: text.bodyMedium),
-                          ] else
-                            Text('Waiting for the file...', style: text.bodyMedium),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+    // the screen waits for the phone: the screensaver must not end the app under it
+    return KeepAwake(
+      child: Scaffold(
+        backgroundColor: tvBackground,
+        body: Padding(
+          padding: overscanOf(context),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(child: Text('Add a WireGuard file', style: text.headlineSmall)),
+                  TvButton(label: 'Done', autofocus: true, onPressed: () => Navigator.of(context).pop()),
+                ],
               ),
-          ],
+              const SizedBox(height: 8),
+              Text(
+                'Any VPN that gives WireGuard files works (Proton, Mullvad, Surfshark, Windscribe...). Download one for a '
+                'server outside the UK, close to you for the best picture. Then, on a phone or computer on the same '
+                'network, open this address (or scan the code) and send the file:',
+                style: text.bodyMedium?.copyWith(color: tvMuted),
+              ),
+              const SizedBox(height: 16),
+              if (_problem != null) Text(_problem!, style: text.titleMedium?.copyWith(color: tvAlert)),
+              if (url == null && _problem == null) const CircularProgressIndicator(),
+              if (url != null)
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        color: Colors.white,
+                        padding: const EdgeInsets.all(10),
+                        child: QrImageView(data: url, size: 180, backgroundColor: Colors.white),
+                      ),
+                      const SizedBox(width: 24),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // plain text: a selectable one took the D-pad focus and kept it
+                            Text(url, style: text.headlineSmall),
+                            const SizedBox(height: 12),
+                            Text(
+                              'The page only works while this screen is open.',
+                              style: text.bodyMedium?.copyWith(color: tvMuted),
+                            ),
+                            const SizedBox(height: 16),
+                            if (_saved != null) ...[
+                              Text('Saved: $_saved', style: text.titleLarge?.copyWith(color: tvAccent)),
+                              const SizedBox(height: 4),
+                              Text('Press Done, then VPN in the guide to turn it on.', style: text.bodyMedium),
+                            ] else if (_closed) ...[
+                              Text('Closed after five wrong codes.', style: text.titleLarge?.copyWith(color: tvAlert)),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Press Done and open Add a WireGuard file again for a new code.',
+                                style: text.bodyMedium,
+                              ),
+                            ] else
+                              Text('Waiting for the file...', style: text.bodyMedium),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

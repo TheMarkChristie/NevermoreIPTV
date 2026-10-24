@@ -77,6 +77,12 @@ class Source {
 }
 
 /// "provider.example:8080" -> "http://provider.example:8080": an address typed without its scheme.
+/// The same login or playlist: one kind, one address (case and a trailing slash aside), one username.
+bool sameSource(Source a, Source b) =>
+    a.kind == b.kind &&
+    normalAddress(a.url).toLowerCase() == normalAddress(b.url).toLowerCase() &&
+    a.username.trim().toLowerCase() == b.username.trim().toLowerCase();
+
 String normalAddress(String text) {
   final t = text.trim();
   if (t.isEmpty) return t;

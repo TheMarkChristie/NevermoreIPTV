@@ -22,7 +22,13 @@
 
     A source handed in replaces the source of the same name on the TV, else it is added. -VpnConfig hands in a
     WireGuard file from any VPN (Proton, Mullvad, Surfshark, Windscribe...) for a server outside the UK; its private key
-    is never printed. The app can also take one from a phone: Settings > VPN > Add a WireGuard file.
+    is never printed. The app can also take one from a phone: Settings > VPN > Add a WireGuard file. -Preset <code>
+    applies a preset built into the app (the house file) once the login's channel list is read.
+
+    The classic adb connection (port 5555) is unencrypted on the home network. On Android 11 and later (every Google TV)
+    prefer Wireless debugging: Developer options > Wireless debugging > Pair device with pairing code, then run with
+    -Pair and -Tv <the address:port shown at the top of the Wireless debugging screen>; the script asks for the pairing
+    address and code once, and the connection is then TLS.
 #>
 param(
     [Parameter(Mandatory = $true)] [string] $Tv,
@@ -33,6 +39,8 @@ param(
     [string] $GuideUrl,
     [string] $VpnConfig,
     [string] $SourceName,
+    [string] $Preset,
+    [switch] $Pair,
     [switch] $NoInstall,
     [switch] $PlaybackTest,
     [ValidateSet('texture', 'platform')] [string] $View = 'texture'
@@ -79,6 +87,13 @@ function Read-EnvFile([string] $path) {
 $script:adb = Find-Adb
 $script:serial = if ($Tv -match ':\d+$' -or $Tv -match '^emulator-\d+$') { $Tv } else { "${Tv}:5555" }
 
+if ($Pair) {
+    # Wireless debugging: pairing is a one-off per PC; the pairing port differs from the connection port in -Tv
+    $pairAddress = Read-Host 'Pairing address shown on the TV (address:port)'
+    $pairCode = Read-Host 'Pairing code shown on the TV'
+    Write-Host "> adb pair $pairAddress"
+    & $adb pair $pairAddress $pairCode | Write-Host
+}
 if ($serial -notmatch '^emulator-') {
     Write-Host "> adb connect $serial"
     & $adb connect $serial | Write-Host
@@ -111,9 +126,13 @@ if ($EnvFile) {
 }
 if ($login -and ($login.Values | Where-Object { -not $_ })) { throw 'The login is missing the server address, username or password.' }
 
-if ($login -or $M3uUrl -or $VpnConfig -or $PlaybackTest) {
+if ($login -or $M3uUrl -or $VpnConfig -or $Preset -or $PlaybackTest) {
     $parts = @("am start -S -n $package/.Setup")
     $shown = @("am start -S -n $package/.Setup")
+    if ($Preset) {
+        $parts += "--es preset $(Quote-Sh $Preset)"
+        $shown += "--es preset '***'"
+    }
     if ($VpnConfig) {
         $conf = Get-Item $VpnConfig
         $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes((Get-Content $conf.FullName -Raw)))
@@ -122,15 +141,16 @@ if ($login -or $M3uUrl -or $VpnConfig -or $PlaybackTest) {
     }
     if ($M3uUrl) {
         $name = if ($SourceName) { $SourceName } else { 'Playlist' }
-        foreach ($pair in @(@('kind', 'm3u'), @('name', $name), @('url', $M3uUrl), @('guide', "$GuideUrl"))) {
-            $parts += "--es $($pair[0]) $(Quote-Sh $pair[1])"
-            $shown += "--es $($pair[0]) $(Quote-Sh $pair[1])"
+        # ($extra, not $pair: $Pair is the switch above, and PowerShell variable names ignore case)
+        foreach ($extra in @(@('kind', 'm3u'), @('name', $name), @('url', $M3uUrl), @('guide', "$GuideUrl"))) {
+            $parts += "--es $($extra[0]) $(Quote-Sh $extra[1])"
+            $shown += "--es $($extra[0]) $(Quote-Sh $extra[1])"
         }
     } elseif ($login) {
         $name = if ($SourceName) { $SourceName } else { 'My provider' }
-        foreach ($pair in @(@('kind', 'xtream'), @('name', $name), @('url', $login.url), @('username', $login.username), @('password', $login.password))) {
-            $parts += "--es $($pair[0]) $(Quote-Sh $pair[1])"
-            $shown += $(if ($pair[0] -in 'username', 'password') { "--es $($pair[0]) '***'" } else { "--es $($pair[0]) $(Quote-Sh $pair[1])" })
+        foreach ($extra in @(@('kind', 'xtream'), @('name', $name), @('url', $login.url), @('username', $login.username), @('password', $login.password))) {
+            $parts += "--es $($extra[0]) $(Quote-Sh $extra[1])"
+            $shown += $(if ($extra[0] -in 'username', 'password') { "--es $($extra[0]) '***'" } else { "--es $($extra[0]) $(Quote-Sh $extra[1])" })
         }
     }
     if ($PlaybackTest) {

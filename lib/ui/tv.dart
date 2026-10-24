@@ -253,6 +253,45 @@ class _TextEntryPageState extends State<TextEntryPage> {
   }
 }
 
+/// Holds the screen on while [child] is on screen (a page that waits for the viewer: the one-time upload page, the
+/// settings), for at most [holdFor]: since 0.7.1 the screensaver ends the app, and a page left open overnight should
+/// not keep a screen lit for good. The watch screen and the browser hold it themselves while something plays.
+class KeepAwake extends StatefulWidget {
+  const KeepAwake({super.key, required this.child, this.holdFor = const Duration(minutes: 30)});
+
+  final Widget child;
+  final Duration holdFor;
+
+  @override
+  State<KeepAwake> createState() => _KeepAwakeState();
+}
+
+class _KeepAwakeState extends State<KeepAwake> {
+  static const _screen = MethodChannel('nevermore/screen');
+  static int _next = 0;
+  late final String _who = 'page${_next++}';
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _set(true);
+    _timer = Timer(widget.holdFor, () => _set(false));
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _set(false);
+    super.dispose();
+  }
+
+  void _set(bool on) => unawaited(_screen.invokeMethod<void>('awake', {'who': _who, 'on': on}).catchError((_) {}));
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
 /// A thin bar: how far through the programme on now is.
 class ProgressLine extends StatelessWidget {
   const ProgressLine({super.key, required this.value, this.color = tvAccent, this.height = 3});

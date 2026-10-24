@@ -1,7 +1,7 @@
 name: nevermore_iptv
 description: "Nevermore IPTV: live TV on Google TV from an Xtream Codes login or an M3U link."
 publish_to: 'none'
-version: 0.7.2+17
+version: 0.7.3+18
 
 environment:
   sdk: ^3.13.1
@@ -29,3 +29,10 @@ flutter:
     - assets/brand/
     # presets.json, when this copy is built with one (kept out of the repository: lib/core/presets.dart)
     - assets/house/
+
+# The Android video player with three small patches (third_party/video_player_android/NEVERMORE.md): a radio stream no
+# longer ends the process, the failure text carries the HTTP status and the reason, and a live stream's unknown duration
+# no longer reads as the end of the stream.
+dependency_overrides:
+  video_player_android:
+    path: third_party/video_player_android

@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#262C37</color>
+    <!-- the app's own dark behind the window until Flutter draws -->
+    <color name="launch_background">#FF101114</color>
 </resources>

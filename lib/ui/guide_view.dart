@@ -116,11 +116,21 @@ class _GuideViewState extends State<GuideView> {
     super.didUpdateWidget(old);
     // new lists or a new guide: keep the cursor on the same channel and moment
     if (old.categories != widget.categories || old.all != widget.all) {
-      if (_category > widget.categories.length) _category = 0;
-      final uid = _focused?.uid;
+      // the focused channel from the OLD lists (the new ones can be shorter than the cursor row), and the open
+      // category found again by name (a category gone or added moves the others along) (review, 24 Oct 2026)
+      final oldChannels = _category == 0
+          ? old.all
+          : (_category - 1 < old.categories.length
+                ? old.categories[_category - 1].channels
+                : const <PlayableChannel>[]);
+      final uid = _grid.row < oldChannels.length ? oldChannels[_grid.row].uid : null;
+      final name = _category == 0 || _category - 1 >= old.categories.length ? null : old.categories[_category - 1].name;
+      final again = name == null ? -1 : widget.categories.indexWhere((c) => c.name == name);
+      _category = _category == 0 ? 0 : (again < 0 ? 0 : again + 1);
+      if (_barIndex <= old.categories.length) _barIndex = _category;
       final time = _grid.time;
       _buildGrid(atUid: uid);
-      _grid.time = time.clamp(_grid.minTime, _grid.maxTime - 1);
+      _grid.focusTime(time);
     }
   }
 
@@ -154,7 +164,8 @@ class _GuideViewState extends State<GuideView> {
     setState(() {
       _category = index;
       _buildGrid(atUid: widget.playing?.uid);
-      _grid.time = time.clamp(_grid.minTime, _grid.maxTime - 1);
+      // the same moment, with the window moved to show it (a plain assignment left the cursor off screen)
+      _grid.focusTime(time);
     });
     _scrollToRow();
   }
@@ -204,18 +215,22 @@ class _GuideViewState extends State<GuideView> {
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     final k = event.logicalKey;
-    // OK: a short press acts on release; held, it offers the options
+    // OK: a short press acts on release; held, it offers the options, also on release: opened during the hold, the
+    // key's remaining repeats pressed the dialog's own button (review, 24 Oct 2026)
     if (_isSelect(k)) {
       if (event is KeyDownEvent) {
         _selectHeld = true;
         _longDone = false;
       } else if (event is KeyRepeatEvent) {
-        if (_selectHeld && !_longDone) {
-          _longDone = true;
-          _options();
-        }
+        if (_selectHeld && !_longDone) setState(() => _longDone = true);
       } else if (event is KeyUpEvent) {
-        if (_selectHeld && !_longDone) _activate();
+        if (_selectHeld) {
+          if (_longDone) {
+            unawaited(_options());
+          } else {
+            _activate();
+          }
+        }
         _selectHeld = false;
       }
       return KeyEventResult.handled;
@@ -532,53 +547,56 @@ class _GuideViewState extends State<GuideView> {
 
   Widget _categoryBar(TextTheme text) {
     final names = ['All', for (final c in widget.categories) c.name, 'Search', vpn.label, 'Settings'];
-    return ListView.builder(
+    // every button built (a few dozen at most), so the one showing can always be scrolled to; a builder left the far
+    // ones unbuilt and unreachable (review, 24 Oct 2026)
+    return ListView(
       controller: _bar,
       scrollDirection: Axis.horizontal,
-      itemCount: names.length,
-      itemBuilder: (context, i) {
-        final focused = _onBar && i == _barIndex;
-        final picked = i == _category;
-        return Padding(
-          key: _barKeys.putIfAbsent(i, GlobalKey.new),
-          padding: const EdgeInsets.only(right: 8),
-          child: GestureDetector(
-            onTap: () => i == _settingsIndex
-                ? widget.onSettings()
-                : i == _searchIndex
-                ? unawaited(_search())
-                : i == _vpnIndex
-                ? unawaited(_vpnButton())
-                : _setCategory(i),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: focused ? Colors.white : (picked ? tvSurface : Colors.transparent),
-                border: Border.all(color: focused ? Colors.white : (picked ? tvAccent : Colors.white24), width: 2),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  if (i >= _searchIndex) ...[
-                    Icon(
-                      i == _searchIndex
-                          ? Icons.search
-                          : i == _vpnIndex
-                          ? (vpn.state == VpnState.on ? Icons.vpn_lock : Icons.vpn_key_off_outlined)
-                          : Icons.settings,
-                      size: 16,
-                      color: focused ? Colors.black : Colors.white,
-                    ),
-                    const SizedBox(width: 6),
-                  ],
-                  Text(names[i], style: text.bodyMedium?.copyWith(color: focused ? Colors.black : Colors.white)),
-                ],
-              ),
-            ),
+      children: [for (var i = 0; i < names.length; i++) _barItem(text, names, i)],
+    );
+  }
+
+  Widget _barItem(TextTheme text, List<String> names, int i) {
+    final focused = _onBar && i == _barIndex;
+    final picked = i == _category;
+    return Padding(
+      key: _barKeys.putIfAbsent(i, GlobalKey.new),
+      padding: const EdgeInsets.only(right: 8),
+      child: GestureDetector(
+        onTap: () => i == _settingsIndex
+            ? widget.onSettings()
+            : i == _searchIndex
+            ? unawaited(_search())
+            : i == _vpnIndex
+            ? unawaited(_vpnButton())
+            : _setCategory(i),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: focused ? Colors.white : (picked ? tvSurface : Colors.transparent),
+            border: Border.all(color: focused ? Colors.white : (picked ? tvAccent : Colors.white24), width: 2),
+            borderRadius: BorderRadius.circular(8),
           ),
-        );
-      },
+          child: Row(
+            children: [
+              if (i >= _searchIndex) ...[
+                Icon(
+                  i == _searchIndex
+                      ? Icons.search
+                      : i == _vpnIndex
+                      ? (vpn.state == VpnState.on ? Icons.vpn_lock : Icons.vpn_key_off_outlined)
+                      : Icons.settings,
+                  size: 16,
+                  color: focused ? Colors.black : Colors.white,
+                ),
+                const SizedBox(width: 6),
+              ],
+              Text(names[i], style: text.bodyMedium?.copyWith(color: focused ? Colors.black : Colors.white)),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

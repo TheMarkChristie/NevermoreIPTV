@@ -284,10 +284,12 @@ class _PreviewDialogState extends State<PreviewDialog> {
   Future<void> _start() async {
     try {
       final address = await library.streamFor(widget.channel);
+      // the same Android view as the watch screen: the Flutter texture misdrew on the real TV (0.5.4)
       final player = VideoPlayerController.networkUrl(
         Uri.parse(address.url),
         formatHint: address.hls ? VideoFormat.hls : null,
         httpHeaders: address.headers,
+        viewType: VideoViewType.platformView,
       );
       if (!mounted) return;
       setState(() => _player = player);

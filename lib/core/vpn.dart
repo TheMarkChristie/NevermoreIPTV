@@ -4,12 +4,14 @@
 /// The settings are a WireGuard file from any VPN that gives them (Proton, Mullvad, Surfshark, Windscribe, a server of
 /// one's own), for a server outside the UK. It comes in through Add a WireGuard file (a one-time page a phone or
 /// computer sends it to, vpn_upload.dart) or tools\install.ps1 -VpnConfig, and is kept in Android's encrypted storage.
-/// Only this app's
-/// traffic goes through the tunnel (WireGuard's IncludedApplications), so the rest of the TV is untouched. Once it is
-/// up, the app asks Cloudflare where it now appears to be; a UK answer, or none, turns it off again.
+/// Only this app's traffic goes through the tunnel (WireGuard's IncludedApplications), so the rest of the TV is
+/// untouched. Once it is up, the app asks where it now appears to be; a UK answer, or none, turns it off again. A
+/// tunnel that goes away while on (Android revoked it, another VPN app took over) turns the state to failed, so the
+/// watch screen stops rather than play on over the real address.
 library;
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -44,6 +46,34 @@ class VpnSettings {
 /// "loc=US" in Cloudflare's trace answer -> "US".
 String? countryFromTrace(String body) => RegExp(r'^loc=([A-Z]{2})\s*$', multiLine: true).firstMatch(body)?.group(1);
 
+/// {"country":"NL"} from api.country.is -> "NL" (the second place asked when Cloudflare does not answer).
+String? countryFromJson(String body) {
+  try {
+    final data = jsonDecode(body);
+    final c = data is Map ? '${data['country'] ?? ''}'.trim().toUpperCase() : '';
+    return RegExp(r'^[A-Z]{2}$').hasMatch(c) ? c : null;
+  } on FormatException {
+    return null;
+  }
+}
+
+/// Why a start failed, in plain words (the plug-in's codes are its own).
+String vpnStartFailure(Object err) {
+  if (err is TimeoutException) return 'The VPN did not start. Check the settings, or download them for another server.';
+  if (err is StateError) return err.message;
+  if (err is PlatformException) {
+    return switch (err.code) {
+      'DNS_RESOLUTION_FAILURE' => 'The VPN server could not be found. Is the TV online?',
+      'VPN_NOT_AUTHORIZED' || 'PERMISSION_DENIED' => 'The VPN was not allowed on this TV.',
+      'UNABLE_TO_START_VPN' ||
+      'TUN_CREATION_ERROR' ||
+      'GO_ACTIVATION_ERROR_CODE' => 'The VPN could not be started on this TV. Another VPN app may be running.',
+      _ => 'The VPN did not start (${err.code}).',
+    };
+  }
+  return 'The VPN did not start: $err';
+}
+
 enum VpnState { off, connecting, on, failed }
 
 final vpn = Vpn();
@@ -57,13 +87,20 @@ class Vpn extends ChangeNotifier {
   String? country;
   String? error;
   bool _ready = false;
+  Future<void>? _initing;
   StreamSubscription<VpnStage>? _stages;
   VpnStage _stage = VpnStage.disconnected;
+  bool _stopping = false;
+
+  /// Counts the presses: a start overtaken by a stop (or another start) gives up where it is instead of finishing
+  /// later and turning the VPN on behind the viewer's back (review, 24 Oct 2026).
+  int _gen = 0;
 
   WireGuardFlutterInterface get _wg => WireGuardFlutter.instance;
 
-  /// Android's "allow this VPN" question, asked by MainActivity. The plug-in asks it too but never hears the answer,
-  /// so the first press after an install waited forever (22 Oct 2026); asked here first, the plug-in finds it given.
+  /// MainActivity: Android's "allow this VPN" question (the plug-in asks it too but never hears the answer, so the first
+  /// press after an install waited forever, 22 Oct 2026), and "forget", which clears the plug-in's own plain-text copy
+  /// of the file.
   static const _android = MethodChannel('nevermore/vpn');
 
   Future<void> load() async {
@@ -71,15 +108,54 @@ class Vpn extends ChangeNotifier {
     final name = await _storage.read(key: 'vpn.name');
     if (text != null) settings = VpnSettings.parse(name ?? '', text);
     // Nothing more until the button is pressed: setting the VPN up is what makes Android ask to allow it, and that must
-    // not appear at every start. The app takes the tunnel down when it is left, so none is waiting from before.
+    // not appear at every start. Nothing runs from before (the process ends on leaving), so the plug-in's copy can go.
+    await _forget();
     notifyListeners();
+  }
+
+  /// The plug-in keeps the whole file, private key included, in plain preferences while a tunnel runs and only removes
+  /// it on its own disconnect; cleared here whenever the tunnel is down.
+  Future<void> _forget() async {
+    try {
+      await _android.invokeMethod<void>('forget');
+    } catch (_) {
+      // an older MainActivity without it
+    }
   }
 
   Future<void> _init() async {
     if (_ready) return;
+    final running = _initing;
+    if (running != null) {
+      await running;
+      return;
+    }
+    final mine = _initing = _doInit();
+    try {
+      await mine;
+    } finally {
+      _initing = null;
+    }
+  }
+
+  Future<void> _doInit() async {
     await _wg.initialize(interfaceName: 'nevermore', vpnName: 'Nevermore IPTV');
-    _stages = _wg.vpnStageSnapshot.listen((s) => _stage = s);
+    _stages = _wg.vpnStageSnapshot.listen(_onStage);
     _ready = true;
+  }
+
+  /// The tunnel's own word on itself. Gone while the app thought it was on: the state turns to failed, and the watch
+  /// screen stops the stream rather than let it come back over the real address unnoticed.
+  void _onStage(VpnStage s) {
+    _stage = s;
+    if (_stopping || state != VpnState.on) return;
+    if (s == VpnStage.disconnected || s == VpnStage.denied) {
+      state = VpnState.failed;
+      country = null;
+      error = 'The VPN dropped. Press OK on VPN to start it again.';
+      notifyListeners();
+      unawaited(_forget());
+    }
   }
 
   /// Saves settings handed in by the install script. False when they are not a WireGuard file.
@@ -88,7 +164,7 @@ class Vpn extends ChangeNotifier {
     if (s == null) return false;
     await _storage.write(key: 'vpn.conf', value: s.text);
     await _storage.write(key: 'vpn.name', value: s.name);
-    if (state == VpnState.on) await turnOff();
+    if (state == VpnState.on || state == VpnState.connecting) await turnOff();
     settings = s;
     error = null;
     notifyListeners();
@@ -113,6 +189,7 @@ class Vpn extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    final gen = ++_gen;
     state = VpnState.connecting;
     error = null;
     country = null;
@@ -120,7 +197,9 @@ class Vpn extends ChangeNotifier {
     try {
       // Android asks once to allow the VPN; only this app's traffic goes through it
       if (await _android.invokeMethod<bool>('allow') != true) throw StateError('the VPN was not allowed on this TV');
+      if (gen != _gen) return;
       await _init();
+      if (gen != _gen) return;
       await _wg
           .startVpn(
             serverAddress: s.endpoint ?? '',
@@ -131,38 +210,41 @@ class Vpn extends ChangeNotifier {
           .timeout(const Duration(seconds: 30));
       final deadline = DateTime.now().add(const Duration(seconds: 20));
       while (_stage != VpnStage.connected && await _wg.stage() != VpnStage.connected) {
+        if (gen != _gen) {
+          await _stop();
+          return;
+        }
         if (DateTime.now().isAfter(deadline)) throw TimeoutException('the tunnel did not come up');
         if (_stage == VpnStage.denied) throw StateError('the VPN was not allowed on this TV');
         await Future<void>.delayed(const Duration(milliseconds: 300));
       }
+      if (gen != _gen) {
+        await _stop();
+        return;
+      }
       state = VpnState.on;
       notifyListeners();
-      await _checkCountry();
+      await _checkCountry(gen);
     } catch (err) {
+      if (gen != _gen) return;
       await _stop();
       state = VpnState.failed;
-      error = err is TimeoutException
-          ? 'The VPN did not start. Check the settings, or download them for another server.'
-          : err is StateError
-          ? err.message
-          : 'The VPN did not start: $err';
+      error = vpnStartFailure(err);
       notifyListeners();
     }
   }
 
   /// Where the app now appears to be. The UK, or no answer through the tunnel, turns the VPN off again.
-  Future<void> _checkCountry() async {
+  Future<void> _checkCountry(int gen) async {
     String? where;
     for (var attempt = 0; attempt < 3 && where == null; attempt++) {
-      try {
-        final resp = await http
-            .get(Uri.parse('https://www.cloudflare.com/cdn-cgi/trace'))
-            .timeout(const Duration(seconds: 8));
-        where = countryFromTrace(resp.body);
-      } catch (_) {
-        await Future<void>.delayed(const Duration(seconds: 2));
-      }
+      where =
+          await _askCountry('https://www.cloudflare.com/cdn-cgi/trace', countryFromTrace) ??
+          await _askCountry('https://api.country.is', countryFromJson);
+      if (gen != _gen) return;
+      if (where == null) await Future<void>.delayed(const Duration(seconds: 2));
     }
+    if (gen != _gen) return;
     if (where == null) {
       await _stop();
       state = VpnState.failed;
@@ -179,18 +261,36 @@ class Vpn extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<String?> _askCountry(String url, String? Function(String body) read) async {
+    try {
+      final resp = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 8));
+      return resp.statusCode == 200 ? read(resp.body) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> turnOff() async {
+    _gen++;
     await _stop();
     state = VpnState.off;
     country = null;
+    error = null;
     notifyListeners();
+    await _forget();
   }
 
   Future<void> _stop() async {
+    _stopping = true;
     try {
-      if (_ready) await _wg.stopVpn();
+      // a start still setting the plug-in up: let it finish, then stop what it started
+      final starting = _initing;
+      if (starting != null) await starting.catchError((_) {});
+      if (_ready) await _wg.stopVpn().timeout(const Duration(seconds: 5));
     } catch (_) {
-      // already down
+      // already down, or not answering: the end of the process takes it down
+    } finally {
+      _stopping = false;
     }
   }
 

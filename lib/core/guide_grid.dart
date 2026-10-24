@@ -12,7 +12,9 @@ import 'model.dart';
 
 const gridSpan = 2 * 3600;
 const gridBack = 1800;
-const gridAhead = 12 * 3600;
+// as far ahead as the guide holds programmes (guide.dart's guideAheadHours): a show found by the search for tomorrow
+// evening must have a cell to land on (review, 24 Oct 2026)
+const gridAhead = 36 * 3600;
 
 int halfHourFloor(int t) => t - t % 1800;
 
