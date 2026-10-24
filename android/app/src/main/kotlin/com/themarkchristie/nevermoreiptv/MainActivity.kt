@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
+import android.os.Process
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -24,6 +25,21 @@ class MainActivity : FlutterActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         readSetup(intent)?.let { pendingSetup = it }
+    }
+
+    /**
+     * Leaving the app closes it (Mark, 24 Oct 2026: "can we make the app fully close down then its shuts so its a fresh
+     * restart"): Home, Back twice or the TV going to standby ends the screen and then the process, so the next start is a
+     * cold one on the last channel. A dialog over the app (Android's VPN question) only pauses it, so it does not count.
+     */
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations && !isFinishing) finishAndRemoveTask()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (isFinishing && !isChangingConfigurations) Process.killProcess(Process.myPid())
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
