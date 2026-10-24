@@ -20,6 +20,7 @@ import '../core/library.dart';
 import '../core/model.dart';
 import '../core/show_search.dart';
 import '../core/vpn.dart';
+import '../core/web.dart';
 import 'show_search_page.dart';
 import 'tv.dart';
 import 'vpn_card.dart';
@@ -378,7 +379,7 @@ class _GuideViewState extends State<GuideView> {
 
   Future<void> _options() async {
     final ch = _focused;
-    if (_onBar || ch == null) return;
+    if (_onBar || ch == null || isWeb(ch)) return;
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
@@ -473,6 +474,17 @@ class _GuideViewState extends State<GuideView> {
     }
     final ch = _focused;
     if (ch == null) return Text('No channels in this category', style: text.titleMedium);
+    if (isWeb(ch)) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(Uri.tryParse(ch.channel.url ?? '')?.host ?? '', style: text.bodyMedium?.copyWith(color: tvMuted)),
+          const SizedBox(height: 2),
+          Text(ch.name, style: text.titleLarge, maxLines: 1, overflow: TextOverflow.ellipsis),
+          Text('OK opens it in the browser.', style: text.bodySmall?.copyWith(color: tvMuted)),
+        ],
+      );
+    }
     final p = _grid.cell?.programme;
     final now = nowSeconds();
     final reading = p == null && library.guideBusy && library.programmes.isEmpty;

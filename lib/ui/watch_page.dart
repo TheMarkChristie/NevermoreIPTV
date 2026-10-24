@@ -17,10 +17,12 @@ import '../core/library.dart';
 import '../core/model.dart';
 import '../core/show_search.dart';
 import '../core/vpn.dart';
+import '../core/web.dart';
 import 'guide_view.dart';
 import 'manage_channels_page.dart';
 import 'settings_page.dart';
 import 'tv.dart';
+import 'web_page.dart';
 
 const _startTimeout = Duration(seconds: 10);
 const _zapSettle = Duration(milliseconds: 600);
@@ -65,7 +67,17 @@ class _WatchPageState extends State<WatchPage> {
     _onLibrary();
     _life = AppLifecycleListener(onHide: _onHide, onShow: _onShow);
     unawaited(_startLast());
+    unawaited(
+      webCategory().then((c) {
+        if (mounted) setState(() => _web = c);
+      }),
+    );
   }
+
+  /// The guide's Web category (the house file's sites), after the TV's own.
+  Category? _web;
+
+  List<Category> get _guideCategories => [..._categories, ?_web];
 
   @override
   void dispose() {
@@ -464,12 +476,17 @@ class _WatchPageState extends State<WatchPage> {
               if (_info && !_guideOpen && _current != null) _infoBar(text),
               if (_guideOpen)
                 GuideView(
-                  categories: _categories,
+                  categories: _guideCategories,
                   all: _all,
                   category: _guideCategory,
                   playing: _current,
                   video: _video(text, small: true),
                   onPlay: (ch, category) {
+                    // a site: the browser, with the TV stopped meanwhile
+                    if (isWeb(ch)) {
+                      unawaited(_leaveFor(WebPage(name: ch.name, url: ch.channel.url ?? '')));
+                      return;
+                    }
                     _autoStart = null;
                     _zapCategory = category;
                     _closeGuide();
@@ -555,8 +572,17 @@ class _WatchPageState extends State<WatchPage> {
     final style = now ? text.bodyMedium : text.bodyMedium?.copyWith(color: tvMuted);
     return Row(
       children: [
-        SizedBox(width: 52, child: Text(now ? 'Now' : 'Next', style: style?.copyWith(fontWeight: FontWeight.w700))),
-        Expanded(child: Text(_programmeLine(p, now: now), style: style, overflow: TextOverflow.ellipsis)),
+        SizedBox(
+          width: 52,
+          child: Text(now ? 'Now' : 'Next', style: style?.copyWith(fontWeight: FontWeight.w700)),
+        ),
+        Expanded(
+          child: Text(
+            _programmeLine(p, now: now),
+            style: style,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
       ],
     );
   }
@@ -586,7 +612,9 @@ class _WatchPageState extends State<WatchPage> {
                 children: [
                   Row(
                     children: [
-                      Flexible(child: Text(ch.name, style: text.titleLarge, overflow: TextOverflow.ellipsis)),
+                      Flexible(
+                        child: Text(ch.name, style: text.titleLarge, overflow: TextOverflow.ellipsis),
+                      ),
                       if (library.isRadio(ch)) ...[
                         const SizedBox(width: 10),
                         const Icon(Icons.radio, size: 22, color: tvMuted),

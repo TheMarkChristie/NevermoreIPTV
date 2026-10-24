@@ -8,6 +8,7 @@ import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugins.webviewflutter.WebViewFlutterAndroidExternalApi
 
 private const val VPN_REQUEST = 4711
 
@@ -57,6 +58,18 @@ class MainActivity : FlutterActivity() {
                         vpnAnswer = result
                         startActivityForResult(ask, VPN_REQUEST)
                     }
+                }
+                else -> result.notImplemented()
+            }
+        }
+        // the browser's pop-up blocker: no window may open itself (the WebView plug-in lets scripts open them)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nevermore/web").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "blockPopups" -> {
+                    @Suppress("DEPRECATION")
+                    val web = WebViewFlutterAndroidExternalApi.getWebView(flutterEngine, (call.arguments as Number).toLong())
+                    web?.settings?.javaScriptCanOpenWindowsAutomatically = false
+                    result.success(web != null)
                 }
                 else -> result.notImplemented()
             }

@@ -78,14 +78,38 @@ List<Preset> presetsFromJson(Object? data) => [
       if (p is Map) Preset.fromJson(Map<String, dynamic>.from(p)),
 ].where((p) => p.code.isNotEmpty).toList();
 
-/// The presets built into this copy of the app; none when it was built without the file.
-Future<List<Preset>> loadPresets() async {
+/// A site for the guide's Web category: the same file's "sites": [{"name": "Club TV", "url": "https://..."}].
+class WebSite {
+  const WebSite(this.name, this.url);
+
+  final String name;
+  final String url;
+}
+
+/// The sites in a presets.json; one without an http(s) address is left out, one without a name is called by its host.
+List<WebSite> sitesFromJson(Object? data) => [
+  if (data is Map)
+    for (final s in (data['sites'] as List? ?? const []))
+      if (s is Map && Uri.tryParse('${s['url'] ?? ''}'.trim())?.scheme.startsWith('http') == true)
+        WebSite(
+          '${s['name'] ?? ''}'.trim().isEmpty ? Uri.parse('${s['url']}'.trim()).host : '${s['name']}'.trim(),
+          '${s['url']}'.trim(),
+        ),
+];
+
+Future<Object?> _houseFile() async {
   try {
-    return presetsFromJson(jsonDecode(await rootBundle.loadString('assets/house/presets.json')));
+    return jsonDecode(await rootBundle.loadString('assets/house/presets.json'));
   } catch (_) {
-    return const [];
+    return null;
   }
 }
+
+/// The presets built into this copy of the app; none when it was built without the file.
+Future<List<Preset>> loadPresets() async => presetsFromJson(await _houseFile());
+
+/// The web sites built into this copy of the app; none without the file.
+Future<List<WebSite>> loadSites() async => sitesFromJson(await _houseFile());
 
 /// The preset's source on this TV: the Xtream login on its server, else the Xtream source with its name.
 Source? presetSource(Preset p, List<Source> sources) {
