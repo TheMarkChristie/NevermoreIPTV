@@ -123,7 +123,6 @@ class _WebPageState extends State<WebPage> {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    final android = _web.platform;
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -132,11 +131,9 @@ class _WebPageState extends State<WebPage> {
           PointerSurface(
             web: _web,
             onBack: _back,
-            child: android is AndroidWebViewController
-                ? WebViewWidget.fromPlatformCreationParams(
-                    params: AndroidWebViewWidgetCreationParams(controller: android, displayWithHybridComposition: true),
-                  )
-                : WebViewWidget(controller: _web),
+            // the plug-in's default way of showing the page (as its full-screen video does): with hybrid composition a
+            // real Google TV drew the page over the pointer (24 Oct 2026)
+            child: WebViewWidget(controller: _web),
           ),
           if (_progress < 100)
             Positioned(top: 0, left: 0, right: 0, child: LinearProgressIndicator(value: _progress / 100, minHeight: 3)),
@@ -199,13 +196,39 @@ class _PointerSurfaceState extends State<PointerSurface> {
   bool _typing = false;
   bool _scrolling = false;
 
+  /// The pointer hides after a few seconds without a key, as a mouse pointer does over a video (Mark, 24 Oct 2026:
+  /// "when you play the video full screen it stays"); the next arrow shows it where it was.
+  bool _shown = true;
+  Timer? _idle;
+  static const _hideAfter = Duration(seconds: 3);
+
   /// Touches made here, numbered well clear of real ones.
   static int _touch = 900000;
 
   @override
+  void initState() {
+    super.initState();
+    _idle = Timer(_hideAfter, _hide);
+  }
+
+  @override
   void dispose() {
+    _idle?.cancel();
     _keys.dispose();
     super.dispose();
+  }
+
+  void _hide() {
+    if (mounted) setState(() => _shown = false);
+  }
+
+  /// A key used: the pointer stays (or comes back) for a few seconds more. False when it was hidden.
+  bool _wake() {
+    _idle?.cancel();
+    _idle = Timer(_hideAfter, _hide);
+    if (_shown) return true;
+    setState(() => _shown = true);
+    return false;
   }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
@@ -214,6 +237,15 @@ class _PointerSurfaceState extends State<PointerSurface> {
       return KeyEventResult.ignored;
     }
     final k = event.logicalKey;
+    final dir = switch (k) {
+      LogicalKeyboardKey.arrowUp => const Offset(0, -1),
+      LogicalKeyboardKey.arrowDown => const Offset(0, 1),
+      LogicalKeyboardKey.arrowLeft => const Offset(-1, 0),
+      LogicalKeyboardKey.arrowRight => const Offset(1, 0),
+      _ => null,
+    };
+    // the first arrow while hidden only shows the pointer where it is
+    if (!_wake() && dir != null) return KeyEventResult.handled;
     if (k == LogicalKeyboardKey.select || k == LogicalKeyboardKey.enter || k == LogicalKeyboardKey.gameButtonA) {
       if (event is KeyDownEvent) unawaited(_click());
       return KeyEventResult.handled;
@@ -226,13 +258,6 @@ class _PointerSurfaceState extends State<PointerSurface> {
       unawaited(_scroll(-1));
       return KeyEventResult.handled;
     }
-    final dir = switch (k) {
-      LogicalKeyboardKey.arrowUp => const Offset(0, -1),
-      LogicalKeyboardKey.arrowDown => const Offset(0, 1),
-      LogicalKeyboardKey.arrowLeft => const Offset(-1, 0),
-      LogicalKeyboardKey.arrowRight => const Offset(1, 0),
-      _ => null,
-    };
     if (dir == null) return KeyEventResult.ignored;
     _speed = event is KeyDownEvent ? 14 : min(_speed + 6, 60);
     _move(dir * _speed);
@@ -349,8 +374,12 @@ class _PointerSurfaceState extends State<PointerSurface> {
                   Positioned(
                     left: at.dx,
                     top: at.dy,
-                    child: const IgnorePointer(
-                      child: CustomPaint(size: Size(24, 34), painter: _Arrow()),
+                    child: IgnorePointer(
+                      child: AnimatedOpacity(
+                        opacity: _shown ? 1 : 0,
+                        duration: const Duration(milliseconds: 250),
+                        child: const CustomPaint(size: Size(24, 34), painter: _Arrow()),
+                      ),
                     ),
                   ),
                 if (_typing)

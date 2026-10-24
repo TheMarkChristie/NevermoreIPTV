@@ -17,7 +17,7 @@ import 'manage_source_page.dart';
 import 'tv.dart';
 import 'vpn_card.dart';
 
-const appVersion = '0.7.1';
+const appVersion = '0.7.2';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
