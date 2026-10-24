@@ -2,16 +2,20 @@ package com.themarkchristie.nevermoreiptv
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
 import android.os.Process
+import android.provider.Settings
 import android.view.WindowManager
 import android.webkit.CookieManager
+import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugins.webviewflutter.WebViewFlutterAndroidExternalApi
+import java.io.File
 
 private const val VPN_REQUEST = 4711
 
@@ -23,6 +27,9 @@ class MainActivity : FlutterActivity() {
     /** Who wants the screen kept on (the player, the browser, a page waiting for the viewer); on while anyone does. */
     private val awake = HashSet<String>()
     private var webUsed = false
+
+    /** The next stop is Android's installer or its "allow installs" page over the app: the app waits behind them. */
+    private var keepAliveOnce = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,6 +54,10 @@ class MainActivity : FlutterActivity() {
     override fun onStop() {
         super.onStop()
         if (isChangingConfigurations || isFinishing) return
+        if (keepAliveOnce) {
+            keepAliveOnce = false
+            return
+        }
         // the browser's cookies are written to disk in batches: a sign-in made just before Home would be lost
         if (webUsed) {
             try {
@@ -138,6 +149,35 @@ class MainActivity : FlutterActivity() {
                     val web = WebViewFlutterAndroidExternalApi.getWebView(flutterEngine, (call.arguments as Number).toLong())
                     web?.settings?.javaScriptCanOpenWindowsAutomatically = false
                     result.success(web != null)
+                }
+                else -> result.notImplemented()
+            }
+        }
+        // a fetched update handed to Android's installer (Settings > Update): the APK sits in the app's cache and the
+        // installer reads it through the FileProvider in the manifest; the TV may first want Nevermore allowed to
+        // install apps, in which case that settings page opens and the viewer presses Install again afterwards
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nevermore/update").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "install" -> {
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+                            keepAliveOnce = true
+                            startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
+                            result.success("allow")
+                        } else {
+                            val apk = File(call.arguments as String)
+                            val uri = FileProvider.getUriForFile(this, "$packageName.files", apk)
+                            val open = Intent(Intent.ACTION_VIEW)
+                                .setDataAndType(uri, "application/vnd.android.package-archive")
+                                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                            keepAliveOnce = true
+                            startActivity(open)
+                            result.success("started")
+                        }
+                    } catch (err: Exception) {
+                        keepAliveOnce = false
+                        result.error("install", err.message ?: err.toString(), null)
+                    }
                 }
                 else -> result.notImplemented()
             }

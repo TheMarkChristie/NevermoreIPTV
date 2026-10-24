@@ -20,11 +20,28 @@ const guideMaxHeaderUrls = 5;
 const guidePastHours = 3;
 const guideAheadHours = 36;
 
-/// epgshare01's free country files offered in Settings > Guide (code -> name). Never ALL_SOURCES1 (201 MB).
-const epgCountries = {'UK': 'UK', 'NO': 'Norway', 'SE': 'Sweden', 'DK': 'Denmark', 'IE': 'Ireland'};
+/// epgshare01's free files offered in Settings > Guide: the code kept in settings.json -> (file, name). US2 is the
+/// national US channels (NHL, NFL and NBA networks among them) and US_SPORTS1 the leagues' team channels; US1 and CA1
+/// do not exist (checked 24 Oct 2026). Never ALL_SOURCES1 (201 MB) or US_LOCALS1 (56 MB).
+const epgFiles = {
+  'UK': ('UK1', 'UK'),
+  'NO': ('NO1', 'Norway'),
+  'SE': ('SE1', 'Sweden'),
+  'DK': ('DK1', 'Denmark'),
+  'IE': ('IE1', 'Ireland'),
+  'US': ('US2', 'USA'),
+  'US_SPORTS': ('US_SPORTS1', 'US teams'),
+  'CA': ('CA2', 'Canada'),
+};
+
+/// Code -> name, for the Settings chips.
+final epgCountries = {for (final e in epgFiles.entries) e.key: e.value.$2};
 const defaultEpgCountries = {'UK', 'NO'};
 
-String epgshareUrl(String code) => 'https://epgshare01.online/epgshare01/epg_ripper_${code}1.xml.gz';
+/// The file a code stands for ("US_SPORTS" -> "US_SPORTS1"); an unknown code keeps the old <code>1 form.
+String epgFileFor(String code) => epgFiles[code]?.$1 ?? '${code}1';
+
+String epgshareUrl(String code) => 'https://epgshare01.online/epgshare01/epg_ripper_${epgFileFor(code)}.xml.gz';
 
 /// "https://epgshare01.online/epgshare01/epg_ripper_UK1.xml.gz" -> "epgshare01 UK1".
 String guideLabelFor(String url) {

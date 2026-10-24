@@ -537,6 +537,7 @@ Selection applyChanges(
 
 final _prefix = RegExp(r'^\s*(?:[a-z]{2,3}(?:[-/][a-z0-9]{1,4})?|[a-z]{2,4}\s?\+?)\s*[:|]\s*', caseSensitive: false);
 final _noise = RegExp(r'\b(?:fhd|uhd|hd|sd|4k|hevc|h265|1080p?|720p?|backup|raw|vip|live)\b', caseSensitive: false);
+final _leagueTag = RegExp(r'^\s*[A-Za-z]{2,5}\s+-\s+(?=\S)');
 final _marks = RegExp('[Ⓐ-ⓩ]');
 const _numbers = {'one': '1', 'two': '2', 'three': '3', 'four': '4', 'five': '5'};
 
@@ -617,9 +618,10 @@ String? countryHint({required String name, String? tvgCountry, String? group}) {
   return _countryNames[(group ?? '').trim().toLowerCase()];
 }
 
-/// The country of an epgshare01 guide file from its label ("epgshare01 UK1" -> GB); null for any other guide.
+/// The country of an epgshare01 guide file from its label ("epgshare01 UK1" -> GB, "epgshare01 US_SPORTS1" -> US);
+/// null for any other guide.
 String? guideCountry(String label) {
-  final m = RegExp(r'^epgshare01 ([A-Za-z]{2})\d').firstMatch(label);
+  final m = RegExp(r'^epgshare01 ([A-Za-z]{2})(?:_[A-Za-z]+)?\d').firstMatch(label);
   if (m == null) return null;
   final tag = m.group(1)!.toLowerCase();
   return _countryNames[tag] ?? tag.toUpperCase();
@@ -640,7 +642,9 @@ final _countryWord = RegExp(
 /// "UK: BBC TWO FHD", "BBC Two HD" and "BBC 2" all give "bbc2"; "NRK1 Norway (NO,NO)" and "[DR1DK] DR1" give "nrk1"
 /// and "dr1".
 String normName(String name) {
-  var plain = name.replaceFirst(_bracketCode, '');
+  // "NHL - Seattle Kraken" (epgshare01's US team files) is "NHL: SEATTLE KRAKEN" or "TEAM: Dallas Cowboys" at a
+  // provider: the league tag before a dash goes the way the tag before a colon does (24 Oct 2026)
+  var plain = name.replaceFirst(_bracketCode, '').replaceFirst(_leagueTag, '');
   if (_epgEnding.hasMatch(plain)) plain = plain.replaceFirst(_epgEnding, '').replaceFirst(_countryWord, '');
   var text = foldAscii(tidyName(plain));
   text = text.replaceAll('&', ' and ').replaceAll('+', ' plus ');

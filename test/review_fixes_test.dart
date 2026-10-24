@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nevermore_iptv/core/guide.dart';
 import 'package:nevermore_iptv/core/guide_grid.dart';
 import 'package:nevermore_iptv/core/library.dart';
 import 'package:nevermore_iptv/core/m3u.dart';
@@ -12,10 +13,10 @@ import 'package:nevermore_iptv/core/player_state.dart';
 import 'package:nevermore_iptv/core/presets.dart';
 import 'package:nevermore_iptv/core/reasons.dart';
 import 'package:nevermore_iptv/core/show_search.dart';
+import 'package:nevermore_iptv/core/updates.dart' show appVersion;
 import 'package:nevermore_iptv/core/vpn.dart';
 import 'package:nevermore_iptv/core/vpn_upload.dart';
 import 'package:nevermore_iptv/core/xtream.dart';
-import 'package:nevermore_iptv/ui/settings_page.dart' show appVersion;
 
 void main() {
   group('failure text', () {
@@ -60,7 +61,18 @@ void main() {
       expect(countryHint(name: 'PPV 1'), isNull);
       expect(guideCountry('epgshare01 UK1'), 'GB');
       expect(guideCountry('epgshare01 NO1'), 'NO');
+      expect(guideCountry('epgshare01 US_SPORTS1'), 'US');
+      expect(guideCountry('epgshare01 CA2'), 'CA');
       expect(guideCountry('My provider guide'), isNull);
+      expect(epgshareUrl('US_SPORTS'), 'https://epgshare01.online/epgshare01/epg_ripper_US_SPORTS1.xml.gz');
+      expect(epgshareUrl('UK'), 'https://epgshare01.online/epgshare01/epg_ripper_UK1.xml.gz');
+    });
+
+    test('a league\'s team channel matches however the tag is written', () {
+      expect(normName('NHL - Seattle Kraken'), normName('NHL: SEATTLE KRAKEN'));
+      expect(normName('NFL - Dallas Cowboys'), normName('TEAM: Dallas Cowboys'));
+      expect(normName('MILB - Sugar Land Space Cowboys'), isNot(normName('TEAM: Dallas Cowboys')));
+      expect(normName('US-S: NHL NETWORK'), normName('NHL Network HD'));
     });
 
     test('a name match prefers the channel\'s own country\'s file and refuses another country\'s', () {
@@ -142,6 +154,7 @@ void main() {
           {
             'code': '1',
             'name': 'P',
+            'guides': ['us', 'CA'],
             'groups': [
               {
                 'group': 'NHL',
@@ -159,6 +172,7 @@ void main() {
       final r = applyPreset(catalog, preset, previous: previous);
       expect(r.selection.channels['2'], {'name': 'Kraken', 'guide': 'g|x', 'on': true});
       expect(r.shown, 1);
+      expect(preset.guides, ['US', 'CA']);
       final none = applyPreset(
         catalog,
         presetsFromJson({

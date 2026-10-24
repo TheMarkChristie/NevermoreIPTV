@@ -20,6 +20,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'guide.dart';
 import 'library.dart';
 import 'model.dart';
 import 'sources.dart';
@@ -49,7 +50,7 @@ class PresetGroup {
 }
 
 class Preset {
-  const Preset({required this.code, required this.name, this.server, this.groups = const []});
+  const Preset({required this.code, required this.name, this.server, this.groups = const [], this.guides = const []});
 
   final String code;
 
@@ -59,6 +60,9 @@ class Preset {
   /// "http://host:8080": the Xtream server the picks are for.
   final String? server;
   final List<PresetGroup> groups;
+
+  /// epgshare01 files to tick with the picks (codes of [epgFiles]: "US", "CA"); the picks' guide comes with them.
+  final List<String> guides;
 
   factory Preset.fromJson(Map<String, dynamic> j) {
     final server = '${j['server'] ?? ''}'.trim();
@@ -70,6 +74,7 @@ class Preset {
         for (final g in (j['groups'] as List? ?? const []))
           if (g is Map) PresetGroup.fromJson(Map<String, dynamic>.from(g)),
       ],
+      guides: [for (final g in (j['guides'] as List? ?? const [])) '$g'.trim().toUpperCase()],
     );
   }
 }
@@ -173,7 +178,15 @@ Future<String> applyPresetCode(Library lib, String code) async {
   final result = applyPreset(catalog, p, previous: lib.selectionOf(source.id));
   if (result.shown == 0) return 'preset ${p.name}: nothing matched, channels left as they were';
   await lib.setSelection(source.id, result.selection);
+  await tickPresetGuides(lib, p);
   return 'preset ${p.name}: ${result.shown} channels';
+}
+
+/// The guide files a preset names, ticked (never unticked: a viewer's own ticks stay).
+Future<void> tickPresetGuides(Library lib, Preset p) async {
+  for (final code in p.guides) {
+    if (epgFiles.containsKey(code) && !lib.epg.contains(code)) await lib.setEpg(code, true);
+  }
 }
 
 /// The source's new selection: what the preset names, in its order. The viewer's own renames, hand-picked guides and

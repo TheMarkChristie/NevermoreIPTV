@@ -1,5 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Settings > Update hands a fetched release to Android's installer. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
 
     <!-- A TV app: the Google TV launcher lists it; no touch screen needed. -->
     <uses-feature android:name="android.software.leanback" android:required="false"/>
@@ -44,6 +46,16 @@
             android:targetActivity=".MainActivity"
             android:exported="true"
             android:permission="android.permission.WRITE_SECURE_SETTINGS"/>
+        <!-- Lets Android's installer read an update fetched into the app's cache (lib/core/updates.dart). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/provider_paths"/>
+        </provider>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

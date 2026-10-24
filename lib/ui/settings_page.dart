@@ -12,13 +12,12 @@ import '../core/guide.dart';
 import '../core/library.dart';
 import '../core/presets.dart';
 import '../core/sources.dart';
+import '../core/updates.dart';
 import 'add_source_page.dart';
 import 'categories_page.dart';
 import 'manage_source_page.dart';
 import 'tv.dart';
 import 'vpn_card.dart';
-
-const appVersion = '0.7.3';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -33,6 +32,20 @@ class _SettingsPageState extends State<SettingsPage> {
   String _typed = '';
   Timer? _typedTimer;
   bool _noSuchCode = false;
+
+  /// Whether this copy has presets at all (the house file): the Enter a code button shows only then.
+  bool _hasPresets = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(
+      loadPresets().then((p) {
+        if (mounted) setState(() => _hasPresets = p.isNotEmpty);
+      }),
+    );
+    unawaited(updater.checkIfDue());
+  }
 
   @override
   void dispose() {
@@ -71,6 +84,29 @@ class _SettingsPageState extends State<SettingsPage> {
     }
     _typedTimer?.cancel();
     setState(_clearTyped);
+    await _applyPreset(preset);
+  }
+
+  /// The code typed on the TV keyboard: most remotes have no number keys (Mark, 24 Oct 2026: "the hidden code doesn
+  /// really work as most devices do not have a number pad").
+  Future<void> _askCode() async {
+    final code = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => const TextEntryPage(
+          label: 'Code',
+          initial: '',
+          keyboard: TextInputType.number,
+          hint: 'The code for this TV\'s channel picks',
+        ),
+      ),
+    );
+    if (code == null || code.trim().isEmpty || !mounted) return;
+    final preset = (await loadPresets()).where((p) => p.code == code.trim()).firstOrNull;
+    if (!mounted) return;
+    if (preset == null) {
+      await _tell('No preset has that code', 'Check the code and try again.');
+      return;
+    }
     await _applyPreset(preset);
   }
 
@@ -124,6 +160,7 @@ class _SettingsPageState extends State<SettingsPage> {
     );
     if (yes != true || !mounted) return;
     await library.setSelection(id, sel);
+    await tickPresetGuides(library, p);
     if (!mounted) return;
     await _tell(
       '${source.name}: your channels are set',
@@ -237,14 +274,22 @@ class _SettingsPageState extends State<SettingsPage> {
                           // the free channels every install starts with, back after a removal
                           if (!library.hasFreeTv)
                             TvButton(label: 'Add the free channels (Free-TV)', onPressed: library.addFreeTv),
+                          if (_hasPresets)
+                            TvButton(
+                              onPressed: _askCode,
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [Icon(Icons.key, size: 18), SizedBox(width: 6), Text('Enter a code')],
+                              ),
+                            ),
                         ],
                       ),
                       const SizedBox(height: 24),
                       const _GuideCard(),
                       const SizedBox(height: 12),
                       const VpnCard(),
-                      const SizedBox(height: 24),
-                      Text('Nevermore IPTV $appVersion', style: text.bodySmall?.copyWith(color: tvMuted)),
+                      const SizedBox(height: 12),
+                      const _UpdateCard(),
                     ],
                   ),
                 ),
@@ -440,6 +485,86 @@ class _SourceCard extends StatelessWidget {
                     Navigator.of(context).push(MaterialPageRoute(builder: (_) => AddSourcePage(existing: source))),
               ),
               TvButton(label: 'Remove', onPressed: () => _remove(context)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Settings > Update: this version, the latest release on GitHub and the way to it.
+class _UpdateCard extends StatelessWidget {
+  const _UpdateCard();
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(listenable: updater, builder: (context, _) => _card(context));
+
+  Widget _card(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final u = updater;
+    final latest = u.latest;
+    String mb(int bytes) => (bytes / 1048576).toStringAsFixed(0);
+    final String line;
+    switch (u.state) {
+      case UpdateState.idle:
+        line = 'Not checked yet';
+      case UpdateState.checking:
+        line = 'Checking GitHub for a newer version...';
+      case UpdateState.upToDate:
+        line = latest == null
+            ? 'No release on GitHub yet'
+            : 'Up to date${u.checkedAt == null ? '' : ' (checked ${formatDate(u.checkedAt!)} ${formatTime(u.checkedAt!)})'}';
+      case UpdateState.available:
+        line = '${latest!.version} is available${latest.apkSize > 0 ? ' (${mb(latest.apkSize)} MB)' : ''}';
+      case UpdateState.downloading:
+        line = 'Fetching ${latest!.version}: ${mb(u.got)}${u.total > 0 ? ' of ${mb(u.total)}' : ''} MB...';
+      case UpdateState.downloaded:
+        line = 'Fetched ${latest!.version}; opening the installer...';
+      case UpdateState.installing:
+        line =
+            'Android is installing ${latest!.version}. The app closes and comes back as the new version; open it again '
+            'if the TV returns to its Home screen.';
+      case UpdateState.needsPermission:
+        line =
+            'The TV first wants Nevermore allowed to install apps: switch it on in the page that opened, come back, '
+            'then press Install.';
+      case UpdateState.failed:
+        line = u.error ?? 'Something went wrong';
+    }
+    final failed = u.state == UpdateState.failed;
+    final fetched = u.file != null && !failed;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: tvSurface, borderRadius: BorderRadius.circular(10)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Update', style: text.titleMedium),
+          const SizedBox(height: 4),
+          Text('Nevermore IPTV $appVersion', style: text.bodyMedium?.copyWith(color: tvMuted)),
+          Text(line, style: (failed ? text.bodyMedium : text.bodySmall)?.copyWith(color: failed ? tvAlert : tvMuted)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 8,
+            children: [
+              if (u.newer && !u.busy)
+                TvButton(
+                  label: fetched ? 'Install ${latest!.version}' : 'Update to ${latest!.version}',
+                  onPressed: () => unawaited(fetched ? u.install() : u.download()),
+                ),
+              // stays enabled while busy: a button that disables itself drops the focus to the top of the page
+              TvButton(
+                label: u.state == UpdateState.downloading
+                    ? 'Fetching...'
+                    : u.busy
+                    ? 'Checking...'
+                    : 'Check now',
+                onPressed: () {
+                  if (!u.busy) unawaited(u.check());
+                },
+              ),
             ],
           ),
         ],

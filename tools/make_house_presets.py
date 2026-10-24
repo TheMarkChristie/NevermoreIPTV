@@ -38,6 +38,7 @@ def read_env(path):
 def read_list(path):
     """(code, source name, groups, sites) from the list."""
     code = source = None
+    guides = []
     groups, sites = [], []
     section = None
     for raw in pathlib.Path(path).read_text(encoding="utf-8").splitlines():
@@ -49,6 +50,9 @@ def read_list(path):
             code = line.split(":", 1)[1].strip()
         elif line.lower().startswith("source:"):
             source = line.split(":", 1)[1].strip()
+        elif line.lower().startswith("guides:"):
+            # epgshare01 files ticked with the picks (lib/core/guide.dart epgFiles codes: UK, NO, US, US_SPORTS, CA...)
+            guides = [g.strip().upper() for g in line.split(":", 1)[1].split(",") if g.strip()]
         elif not line.startswith("- ") or "`" in line:
             continue
         elif section == "channels":
@@ -68,7 +72,7 @@ def read_list(path):
                 sites.append({"name": m.group(1).strip(), "url": m.group(2)})
     if not code or not source:
         sys.exit("the list needs a Code: and a Source: line")
-    return code, source, groups, sites
+    return code, source, guides, groups, sites
 
 
 def provider_call(base, user, password, action):
@@ -117,9 +121,11 @@ def main():
     args.add_argument("--check", action="store_true")
     args.add_argument("--out", default=str(pathlib.Path(__file__).resolve().parent.parent / "assets/house/presets.json"))
     a = args.parse_args()
-    code, source, groups, sites = read_list(a.list)
+    code, source, guides, groups, sites = read_list(a.list)
     env = read_env(a.env)
     preset = {"code": code, "name": source, "server": env["IPTV_XTREAM_URL"], "groups": groups}
+    if guides:
+        preset["guides"] = guides
     out = pathlib.Path(a.out)
     out.write_text(json.dumps({"presets": [preset], "sites": sites}, indent=2) + "\n", encoding="utf-8")
     print(f"wrote {out}: {len(groups)} groups, {len(sites)} sites")

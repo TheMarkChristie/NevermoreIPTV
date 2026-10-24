@@ -55,7 +55,7 @@ int nowSeconds() => DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
 /// Raised whenever matching changes, so a guide cached by the old rules is read again (2: epgshare01's "(NO,NO)" and
 /// "[CODE]" names, 0.5.0).
-const guideMatcherVersion = 3;
+const guideMatcherVersion = 4;
 
 class StreamAddress {
   const StreamAddress(this.url, {required this.hls, required this.headers});
@@ -145,6 +145,9 @@ class Library extends ChangeNotifier {
   Map<String, Map<String, List<String>>> _guideNames = {};
   Timer? _rebuildTimer;
   bool _guideAgain = false;
+
+  /// The strongest download asked for while a refresh was running (true: all, null: missing or stale, false: none).
+  bool? _againDownload = false;
 
   Future<Directory> get _folder async => _dir ??= await getApplicationSupportDirectory();
 
@@ -690,7 +693,7 @@ class Library extends ChangeNotifier {
       }
     }
     for (final code in epgCountries.keys) {
-      if (epg.contains(code)) add('epgshare01 ${code}1', epgshareUrl(code));
+      if (epg.contains(code)) add('epgshare01 ${epgFileFor(code)}', epgshareUrl(code));
     }
     for (final f in out) {
       if (f.downloadedAt != null) continue;
@@ -709,8 +712,10 @@ class Library extends ChangeNotifier {
   /// channels shown when anything changed or the last read is over six hours old.
   Future<void> refreshGuide({bool? download}) async {
     if (guideBusy) {
-      // asked again while busy (a change settled during a download): read once more afterwards
+      // asked again while busy (a change settled during a download, a file ticked): once more afterwards, with the
+      // strongest download asked for meanwhile (a file ticked during a read was never fetched before, 24 Oct 2026)
       _guideAgain = true;
+      if (download == true || (download == null && _againDownload == false)) _againDownload = download;
       return;
     }
     guideBusy = true;
@@ -754,7 +759,13 @@ class Library extends ChangeNotifier {
       notifyListeners();
       if (_guideAgain) {
         _guideAgain = false;
-        scheduleGuideRebuild();
+        final again = _againDownload;
+        _againDownload = false;
+        if (again == false) {
+          scheduleGuideRebuild();
+        } else {
+          unawaited(refreshGuide(download: again));
+        }
       }
     }
   }

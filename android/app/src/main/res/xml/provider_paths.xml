@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What Android's installer may read from the app: a fetched update under the cache's updates/ (lib/core/updates.dart). -->
+<paths>
+    <cache-path name="updates" path="updates/"/>
+</paths>

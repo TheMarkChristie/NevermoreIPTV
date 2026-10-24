@@ -14,6 +14,7 @@ import 'package:path_provider/path_provider.dart';
 import 'core/library.dart';
 import 'core/presets.dart';
 import 'core/setup_channel.dart';
+import 'core/updates.dart';
 import 'core/vpn.dart';
 import 'playback_test.dart';
 import 'ui/add_source_page.dart';
@@ -141,6 +142,14 @@ class _StartPageState extends State<StartPage> {
       );
     } else {
       openTv(notice: notice);
+      // once a day: a newer release on GitHub is announced here, and Settings > Update fetches it
+      unawaited(
+        updater.checkIfDue().then((_) {
+          if (updater.newer) {
+            setupNotices.value = 'Nevermore IPTV ${updater.latest!.version} is available: Settings > Update';
+          }
+        }),
+      );
     }
   }
 
