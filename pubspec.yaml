@@ -1,7 +1,7 @@
 name: nevermore_iptv
 description: "Nevermore IPTV: live TV on Google TV from an Xtream Codes login or an M3U link."
 publish_to: 'none'
-version: 0.5.5+11
+version: 0.5.6+12
 
 environment:
   sdk: ^3.13.1

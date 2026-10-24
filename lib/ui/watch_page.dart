@@ -501,9 +501,21 @@ class _WatchPageState extends State<WatchPage> {
   String _programmeLine(Programme p, {required bool now}) {
     final start = formatTime(DateTime.fromMillisecondsSinceEpoch(p.start * 1000));
     final stop = formatTime(DateTime.fromMillisecondsSinceEpoch(p.stop * 1000));
-    if (!now) return '$start  ${p.title}';
+    if (!now) return '$start - $stop  ${p.title}';
     final left = max(0, ((p.stop - nowSeconds()) / 60).ceil());
     return '$start - $stop  ${p.title}  ($left min left)';
+  }
+
+  /// "Now   18:00 - 19:00  Title  (12 min left)" / "Next  19:00 - 19:30  Title" (Mark, 24 Oct 2026: "show from the EPG
+  /// what is on now and what is on next with the times").
+  Widget _programmeRow(TextTheme text, Programme p, {required bool now}) {
+    final style = now ? text.bodyMedium : text.bodyMedium?.copyWith(color: tvMuted);
+    return Row(
+      children: [
+        SizedBox(width: 52, child: Text(now ? 'Now' : 'Next', style: style?.copyWith(fontWeight: FontWeight.w700))),
+        Expanded(child: Text(_programmeLine(p, now: now), style: style, overflow: TextOverflow.ellipsis)),
+      ],
+    );
   }
 
   Widget _infoBar(TextTheme text) {
@@ -531,17 +543,20 @@ class _WatchPageState extends State<WatchPage> {
                 children: [
                   Text(ch.name, style: text.titleLarge, overflow: TextOverflow.ellipsis),
                   if (now != null) ...[
-                    Text(_programmeLine(now, now: true), style: text.bodyMedium, overflow: TextOverflow.ellipsis),
+                    _programmeRow(text, now, now: true),
                     Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      padding: const EdgeInsets.only(left: 52, top: 4, bottom: 4),
                       child: SizedBox(width: 260, child: ProgressLine(value: progressOf(now, nowSeconds()))),
                     ),
                   ],
-                  if (next != null)
+                  if (next != null) _programmeRow(text, next, now: false),
+                  // said rather than left out, so a channel without a guide is told from a bar without one
+                  if (now == null && next == null)
                     Text(
-                      'Next  ${_programmeLine(next, now: false)}',
-                      style: text.bodySmall?.copyWith(color: tvMuted),
-                      overflow: TextOverflow.ellipsis,
+                      library.guideBusy && library.programmes.isEmpty
+                          ? 'Reading the guide...'
+                          : 'No guide information for this channel',
+                      style: text.bodyMedium?.copyWith(color: tvMuted),
                     ),
                   Text('${ch.category}  -  ${ch.source.name}', style: text.bodySmall?.copyWith(color: tvMuted)),
                 ],
