@@ -21,7 +21,9 @@
 param(
     [Parameter(Mandatory = $true)] [string] $Version,
     [switch] $Publish,
-    [string] $Notes = ''
+    [string] $Notes = '',
+    # publish the APK already in releases\ (a publish that failed after a good build)
+    [switch] $NoBuild
 )
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -40,28 +42,33 @@ $built = 'build\app\outputs\flutter-apk\app-release.apk'
 $house = 'assets\house\presets.json'
 Write-Host $(if (Test-Path $house) { 'house file: built in' } else { 'house file: none (no preset, no Web category in this build)' })
 
-Write-Host '> flutter build apk --release'
-# stderr merged and errors non-terminating for the call: Gradle's warnings on stderr would otherwise stop the script
-# (PowerShell 5.1 treats a native program's stderr as errors when the output is piped)
-$prev = $ErrorActionPreference
-$ErrorActionPreference = 'Continue'
-try {
-    & $flutter build apk --release 2>&1 | ForEach-Object { "$_" } | Where-Object { $_ -match 'Built|error:|FAILURE' } | Write-Host
-    $code = $LASTEXITCODE
-} finally {
-    $ErrorActionPreference = $prev
-}
-if ($code -ne 0 -or -not (Test-Path $built)) { throw 'the build failed' }
-
 $apk = "releases\NevermoreIPTV-$Version.apk"
-Copy-Item $built $apk -Force
+if ($NoBuild) {
+    if (-not (Test-Path $apk)) { throw "$apk is not there to publish" }
+} else {
+    Write-Host '> flutter build apk --release'
+    # stderr merged and errors non-terminating for the call: Gradle's warnings on stderr would otherwise stop the script
+    # (PowerShell 5.1 treats a native program's stderr as errors when the output is piped)
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $flutter build apk --release 2>&1 | ForEach-Object { "$_" } | Where-Object { $_ -match 'Built|error:|FAILURE' } | Write-Host
+        $code = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+    if ($code -ne 0 -or -not (Test-Path $built)) { throw 'the build failed' }
+    Copy-Item $built $apk -Force
+}
 $sha = (Get-FileHash $apk -Algorithm SHA256).Hash.ToLower()
 Write-Host "APK: $apk"
 Write-Host "sha256: $sha"
 
 if ($Publish) {
-    $body = @($Notes, '', "sha256 of the APK: $sha") -join "`n"
+    # the notes go through a file: PowerShell 5.1 would split them at any quote on the way to gh
+    $notesFile = Join-Path $env:TEMP "nevermore-notes-$Version.md"
+    [IO.File]::WriteAllText($notesFile, (@($Notes, '', "sha256 of the APK: $sha") -join "`n"), (New-Object System.Text.UTF8Encoding($false)))
     Write-Host "> gh release create v$Version $apk"
-    & gh release create "v$Version" $apk --title "Nevermore IPTV $Version" --notes $body
+    & gh release create "v$Version" $apk --title "Nevermore IPTV $Version" --notes-file $notesFile
     if ($LASTEXITCODE -ne 0) { throw 'gh release create failed (is the commit pushed, and gh signed in?)' }
 }
