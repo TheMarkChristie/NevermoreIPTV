@@ -144,7 +144,19 @@ class _WatchPageState extends State<WatchPage> {
 
   // ---- playing ----
 
+  static const _screen = MethodChannel('nevermore/screen');
+  bool _awake = false;
+
+  /// The screen stays on while a channel plays, and only then: on a Google TV the screensaver took over the picture
+  /// (Mark, 24 Oct 2026: "it seems that screensavers take over").
+  void _keepAwake(bool on) {
+    if (on == _awake) return;
+    _awake = on;
+    unawaited(_screen.invokeMethod<void>('awake', on).catchError((_) {}));
+  }
+
   Future<void> _stopPlayer() async {
+    _keepAwake(false);
     final p = _player;
     _player = null;
     if (p == null) return;
@@ -189,6 +201,7 @@ class _WatchPageState extends State<WatchPage> {
       await player.initialize().timeout(_startTimeout);
       if (token != _token) return;
       await player.play();
+      _keepAwake(true);
       player.addListener(_onPlayerValue);
       if (mounted) setState(() => _starting = false);
       _autoStart = null;

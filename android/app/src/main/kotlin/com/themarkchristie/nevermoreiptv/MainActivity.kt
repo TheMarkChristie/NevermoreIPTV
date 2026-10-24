@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -56,6 +57,20 @@ class MainActivity : FlutterActivity() {
                         vpnAnswer = result
                         startActivityForResult(ask, VPN_REQUEST)
                     }
+                }
+                else -> result.notImplemented()
+            }
+        }
+        // the screen kept on while a channel plays (the TV's screensaver took over the picture)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nevermore/screen").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "awake" -> {
+                    if (call.arguments == true) {
+                        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    } else {
+                        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    }
+                    result.success(null)
                 }
                 else -> result.notImplemented()
             }
