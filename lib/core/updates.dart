@@ -1,6 +1,6 @@
 /// A newer Nevermore IPTV on GitHub: found, fetched and handed to Android's installer (Mark, 24 Oct 2026: "yes check for
-/// git release"). The public repository's releases carry the public build, without the house file; a house copy keeps
-/// its presets and Web sites in its data folder (0.7.3), so an update from here does not lose them.
+/// git release"). The release APK is the one build for everyone, the household's house file inside it when the build
+/// had one (Mark's decision, 24 Oct 2026); a copy also keeps that file in its data folder (0.7.3).
 library;
 
 import 'dart:async';
