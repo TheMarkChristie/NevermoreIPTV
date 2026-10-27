@@ -10,8 +10,11 @@
 ///
 /// A group is found by its provider name (any case). "all" ticks the whole group, so channels the provider adds show
 /// by themselves; "channels" ticks each channel of the group whose name holds one of the words; "name" renames the
-/// group on the TV (two groups given one name make one category). A preset never holds a login: it is for the Xtream
-/// source on its server, which the TV must have (or is asked for, with the server filled in).
+/// group on the TV (two groups given one name make one category); "guides" names epgshare01 files to tick.
+///
+/// A preset may carry its login, locked with the code (preset_lock.dart): then "code" is not in the file, "lock" is,
+/// and the preset is found by the code opening it; the source is added from the login when the TV lacks it. Without a
+/// login the source must be on the TV, or is asked for with the server filled in.
 library;
 
 import 'dart:convert';
@@ -23,7 +26,9 @@ import 'package:path_provider/path_provider.dart';
 import 'guide.dart';
 import 'library.dart';
 import 'model.dart';
+import 'preset_lock.dart';
 import 'sources.dart';
+import 'xtream.dart';
 
 class PresetGroup {
   const PresetGroup(this.group, {this.name, this.all = false, this.channels = const []});
@@ -50,9 +55,13 @@ class PresetGroup {
 }
 
 class Preset {
-  const Preset({required this.code, required this.name, this.server, this.groups = const [], this.guides = const []});
+  const Preset({this.code, required this.name, this.server, this.groups = const [], this.guides = const [], this.lock});
 
-  final String code;
+  /// The code, when the file has it plain; a locked preset has none written down (the code is its key).
+  final String? code;
+
+  /// The login locked with the code, when the file carries one.
+  final PresetLock? lock;
 
   /// The source's name when the TV has to add it.
   final String name;
@@ -66,8 +75,10 @@ class Preset {
 
   factory Preset.fromJson(Map<String, dynamic> j) {
     final server = '${j['server'] ?? ''}'.trim();
+    final code = '${j['code'] ?? ''}'.trim();
     return Preset(
-      code: '${j['code'] ?? ''}'.trim(),
+      code: code.isEmpty ? null : code,
+      lock: PresetLock.fromJson(j['lock']),
       name: '${j['name'] ?? ''}'.trim(),
       server: server.isEmpty ? null : normalAddress(server),
       groups: [
@@ -84,7 +95,7 @@ List<Preset> presetsFromJson(Object? data) => [
   if (data is Map)
     for (final p in (data['presets'] as List? ?? const []))
       if (p is Map) Preset.fromJson(Map<String, dynamic>.from(p)),
-].where((p) => p.code.isNotEmpty).toList();
+].where((p) => p.code != null || p.lock != null).toList();
 
 /// A site for the guide's Web category: the same file's "sites": [{"name": "Club TV", "url": "https://..."}].
 class WebSite {
@@ -142,6 +153,39 @@ Future<List<Preset>> loadPresets() async => presetsFromJson(await _houseFile());
 /// The web sites built into this copy of the app; none without the file.
 Future<List<WebSite>> loadSites() async => sitesFromJson(await _houseFile());
 
+/// The preset a code opens, with its login when it carries one: a plain code is matched outright, a locked preset by
+/// the code unlocking it (slow on purpose, a second or more each). Null when no preset answers to the code.
+Future<(Preset, PresetLogin?)?> presetForCode(List<Preset> presets, String code) async {
+  final typed = code.trim();
+  if (typed.isEmpty) return null;
+  for (final p in presets) {
+    if (p.code != null && p.code == typed) return (p, null);
+  }
+  for (final p in presets) {
+    final lock = p.lock;
+    if (lock == null || lock.length != typed.length) continue;
+    final login = await unlockPreset(lock, typed);
+    if (login != null) return (p, login);
+  }
+  return null;
+}
+
+/// The preset's source, added from the login that came with its code: checked with the provider (an XtreamError says
+/// why not), then saved with its channel list.
+Future<Source> addPresetSource(Library lib, Preset p, PresetLogin login) async {
+  final source = Source(
+    id: Source.newId(),
+    kind: SourceKind.xtream,
+    name: p.name,
+    url: normalAddress(p.server ?? ''),
+    username: login.username,
+    password: login.password,
+  );
+  final result = await lib.check(source);
+  await lib.saveSource(source, catalog: result.catalog, account: result.account);
+  return source;
+}
+
 /// The preset's source on this TV: the Xtream login on its server, else the Xtream source with its name.
 Source? presetSource(Preset p, List<Source> sources) {
   final xtream = sources.where((s) => s.isXtream);
@@ -168,10 +212,20 @@ class PresetResult {
 /// A preset code handed in by the install script (`-Preset`): applied to its source when the TV has it, once that
 /// source's list is read. Returns a line for the notice on the TV ("preset My provider: 242 channels"), or why not.
 Future<String> applyPresetCode(Library lib, String code) async {
-  final p = (await loadPresets()).where((p) => p.code == code.trim()).firstOrNull;
-  if (p == null) return 'no preset has that code';
-  final source = presetSource(p, lib.sources);
-  if (source == null) return 'preset ${p.name}: its login is not on this TV';
+  final found = await presetForCode(await loadPresets(), code);
+  if (found == null) return 'no preset has that code';
+  final (p, login) = found;
+  var source = presetSource(p, lib.sources);
+  if (source == null) {
+    if (login == null) return 'preset ${p.name}: its login is not on this TV';
+    try {
+      source = await addPresetSource(lib, p, login);
+    } on XtreamError catch (err) {
+      return 'preset ${p.name}: the login was refused: ${err.message}';
+    } catch (err) {
+      return 'preset ${p.name}: the login could not be checked: $err';
+    }
+  }
   await lib.whenListRead(source.id).timeout(const Duration(seconds: 90), onTimeout: () {});
   final catalog = lib.catalogs[source.id];
   if (catalog == null) return 'preset ${p.name}: the channel list could not be read';

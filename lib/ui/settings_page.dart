@@ -10,9 +10,11 @@ import 'package:flutter/services.dart';
 
 import '../core/guide.dart';
 import '../core/library.dart';
+import '../core/preset_lock.dart';
 import '../core/presets.dart';
 import '../core/sources.dart';
 import '../core/updates.dart';
+import '../core/xtream.dart';
 import 'add_source_page.dart';
 import 'categories_page.dart';
 import 'manage_source_page.dart';
@@ -32,6 +34,9 @@ class _SettingsPageState extends State<SettingsPage> {
   String _typed = '';
   Timer? _typedTimer;
   bool _noSuchCode = false;
+
+  /// Endings of the typed digits already tried against a locked preset (an unlock takes a second).
+  final _tried = <String>{};
 
   /// Whether this copy has presets at all (the house file): the Enter a code button shows only then.
   bool _hasPresets = false;
@@ -71,13 +76,29 @@ class _SettingsPageState extends State<SettingsPage> {
   void _clearTyped() {
     _typed = '';
     _noSuchCode = false;
+    _tried.clear();
   }
 
   Future<void> _tryCode(String typed) async {
     final presets = await loadPresets();
     if (!mounted) return;
-    final preset = presets.where((p) => typed.endsWith(p.code)).firstOrNull;
+    final preset = presets.where((p) => p.code != null && typed.endsWith(p.code!)).firstOrNull;
     if (preset == null) {
+      // a locked preset: the last digits, as many as its code has, tried once they are there
+      for (final p in presets) {
+        final lock = p.lock;
+        if (lock == null || typed.length < lock.length) continue;
+        final tail = typed.substring(typed.length - lock.length);
+        if (!_tried.add(tail)) continue;
+        final login = await unlockPreset(lock, tail);
+        if (!mounted) return;
+        if (login != null) {
+          _typedTimer?.cancel();
+          setState(_clearTyped);
+          await _applyPreset(p, login: login);
+          return;
+        }
+      }
       // eight digits or more and nothing matches: say so (a slip of the finger, or a copy built without presets)
       if (typed.length >= 8) setState(() => _noSuchCode = true);
       return;
@@ -101,19 +122,43 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
     );
     if (code == null || code.trim().isEmpty || !mounted) return;
-    final preset = (await loadPresets()).where((p) => p.code == code.trim()).firstOrNull;
+    (Preset, PresetLogin?)? found;
+    final presets = await loadPresets();
     if (!mounted) return;
-    if (preset == null) {
+    // a locked preset takes a second or more to open
+    final ok = await _waitFor('Checking the code...', presetForCode(presets, code).then((f) => found = f));
+    if (!mounted) return;
+    if (!ok || found == null) {
       await _tell('No preset has that code', 'Check the code and try again.');
       return;
     }
-    await _applyPreset(preset);
+    await _applyPreset(found!.$1, login: found!.$2);
   }
 
   /// The preset's channels on its source; without that source yet, Add a source opens with its name and server, and
   /// the list is waited for once the login is saved. The viewer confirms before the ticks are replaced.
-  Future<void> _applyPreset(Preset p) async {
+  Future<void> _applyPreset(Preset p, {PresetLogin? login}) async {
     var source = presetSource(p, library.sources);
+    if (source == null && login != null) {
+      // the login came with the code: the source is added here, checked with the provider first
+      Source? added;
+      String? why;
+      final ok = await _waitFor('Signing in to ${p.name}...', () async {
+        try {
+          added = await addPresetSource(library, p, login);
+        } on XtreamError catch (err) {
+          why = err.message;
+        } catch (err) {
+          why = '$err';
+        }
+      }());
+      if (!mounted) return;
+      if (!ok || added == null) {
+        await _tell('${p.name} did not take the login', why ?? 'It did not answer in time.');
+        return;
+      }
+      source = added;
+    }
     if (source == null) {
       Source? added;
       await Navigator.of(context).push(

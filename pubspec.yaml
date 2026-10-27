@@ -1,7 +1,7 @@
 name: nevermore_iptv
 description: "Nevermore IPTV: live TV on Google TV from an Xtream Codes login or an M3U link."
 publish_to: 'none'
-version: 0.7.5+20
+version: 0.7.6+21
 
 environment:
   sdk: ^3.13.1
@@ -12,6 +12,7 @@ dependencies:
   flutter_secure_storage: ^11.2.0
   http: ^1.6.0
   path_provider: ^2.1.6
+  pointycastle: ^4.0.0
   qr_flutter: ^4.1.0
   video_player: ^2.14.1
   webview_flutter: ^4.14.1

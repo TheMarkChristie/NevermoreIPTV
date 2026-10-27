@@ -18,7 +18,10 @@ read the provider's groups and channels (list calls only, no stream) and shows w
 written or printed.
 """
 import argparse
+import base64
+import hashlib
 import json
+import os
 import pathlib
 import re
 import sys
@@ -114,6 +117,22 @@ def check(env, groups):
     print(f"{total} channels, {problems} line(s) to look at")
 
 
+SCRYPT_N = 16384
+
+
+def lock_login(code, username, password):
+    """The login locked with the code: scrypt for the key, AES-256-GCM for the text (lib/core/preset_lock.dart opens
+    it). The code itself is not written down: the TV finds the preset by the code opening it."""
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    salt, nonce = os.urandom(16), os.urandom(12)
+    key = hashlib.scrypt(code.encode(), salt=salt, n=SCRYPT_N, r=8, p=1, dklen=32, maxmem=64 * 1024 * 1024)
+    data = AESGCM(key).encrypt(nonce, json.dumps({"username": username, "password": password}).encode(), None)
+    b64 = lambda b: base64.b64encode(b).decode()
+    return {"kdf": "scrypt", "n": SCRYPT_N, "r": 8, "p": 1, "len": len(code), "cipher": "aes-256-gcm",
+            "salt": b64(salt), "nonce": b64(nonce), "data": b64(data)}
+
+
 def main():
     args = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     args.add_argument("list")
@@ -123,9 +142,11 @@ def main():
     a = args.parse_args()
     code, source, guides, groups, sites = read_list(a.list)
     env = read_env(a.env)
-    preset = {"code": code, "name": source, "server": env["IPTV_XTREAM_URL"], "groups": groups}
+    # no plain code in the file: the login is locked with it (Mark, 27 Oct 2026: "i want to ship it with this")
+    preset = {"name": source, "server": env["IPTV_XTREAM_URL"], "groups": groups}
     if guides:
         preset["guides"] = guides
+    preset["lock"] = lock_login(code, env["IPTV_XTREAM_USERNAME"], env["IPTV_XTREAM_PASSWORD"])
     out = pathlib.Path(a.out)
     out.write_text(json.dumps({"presets": [preset], "sites": sites}, indent=2) + "\n", encoding="utf-8")
     print(f"wrote {out}: {len(groups)} groups, {len(sites)} sites")

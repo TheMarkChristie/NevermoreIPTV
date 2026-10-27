@@ -63,3 +63,6 @@ android/key.properties
 /docs/
 # A household's presets (code, provider server, picks): built into its own copies only
 assets/house/presets.json
+
+# Gradle's cache under the patched plug-in copy
+third_party/**/.gradle/

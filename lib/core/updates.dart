@@ -13,7 +13,7 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
 /// The version this build is, shown in Settings and compared with the releases. Checked against pubspec.yaml by a test.
-const appVersion = '0.7.5';
+const appVersion = '0.7.6';
 
 /// GitHub's "latest release" answer for the app. A build for a check on the emulator can point it at a local file:
 /// --dart-define=NV_UPDATE_API=http://10.0.2.2:8000/latest.json
