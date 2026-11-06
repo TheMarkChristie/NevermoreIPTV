@@ -33,7 +33,6 @@ class WebPage extends StatefulWidget {
 }
 
 class _WebPageState extends State<WebPage> {
-  static const _native = MethodChannel('nevermore/web');
   static const _screen = MethodChannel('nevermore/screen');
 
   late final WebViewController _web;
@@ -51,7 +50,6 @@ class _WebPageState extends State<WebPage> {
     super.initState();
     _web = WebViewController(onPermissionRequest: _permission)
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setUserAgent(browserUserAgent)
       ..setNavigationDelegate(
         NavigationDelegate(
           onProgress: (p) {
@@ -91,12 +89,20 @@ class _WebPageState extends State<WebPage> {
       if (cookies is AndroidWebViewCookieManager) await cookies.setAcceptThirdPartyCookies(android, true);
       // a plain-http stream on an https page
       await android.setMixedContentMode(MixedContentMode.compatibilityMode);
-      // the pop-up blocker: the plug-in lets scripts open windows by themselves (and loads them over the page)
+      // what the browser announces (desktopAgent): the desktop line of the WebView's own version, with client hints
+      // set on the platform side to say the same; a WebView too old to set hints keeps its own line, which agrees with
+      // itself. The pop-up blocker is set in the same call: the plug-in lets scripts open windows by themselves
       try {
-        final blocked = await _native.invokeMethod<bool>('blockPopups', android.webViewIdentifier);
-        if (blocked != true) debugPrint('browser: the pop-up blocker was not set');
+        final desktop = desktopAgent(await webChannel.invokeMethod<String>('agent') ?? '');
+        final prepared = await webChannel.invokeMethod<String>('prepare', {
+          'id': android.webViewIdentifier,
+          'major': desktop?.major,
+          'full': desktop?.full,
+        });
+        if (prepared == 'desktop' && desktop != null) await _web.setUserAgent(desktop.agent);
+        if (prepared == null) debugPrint('browser: not prepared (no WebView)');
       } catch (err) {
-        debugPrint('browser: the pop-up blocker was not set: $err');
+        debugPrint('browser: not prepared: $err');
       }
     }
     await _web.loadRequest(Uri.parse(widget.url));

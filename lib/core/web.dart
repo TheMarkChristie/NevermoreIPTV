@@ -6,6 +6,7 @@
 /// looked up in the background and drawn when they arrive, so a site that is down never holds the category back.
 library;
 
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
 import 'library.dart';
@@ -16,9 +17,41 @@ import 'sources.dart';
 const webSourceId = 'web';
 const webCategoryName = 'Web';
 
-/// Desktop Chrome: the sites lay out for a big screen and a pointer, and some refuse a WebView's own agent.
-const browserUserAgent =
+/// MainActivity's side of the browser: "agent" (the WebView's own agent line) and "prepare" (web_page.dart).
+const webChannel = MethodChannel('nevermore/web');
+
+/// What the browser announces for a WebView whose own line names Chrome [full]: desktop Chrome of that same version,
+/// as Chrome's "Desktop site" makes it (the sites lay out for a big screen and a pointer, and some refuse a WebView's
+/// own line). MainActivity sets the client hints (the Sec-CH-UA headers, navigator.userAgentData) to say the same.
+/// Before 0.7.8 the line was fixed at Chrome 130 and the hints were WebView's own ("Android WebView 155, mobile,
+/// Android"), and Cloudflare's "verify you are human" check, which compares the two, failed every time (Mark, 6 Nov
+/// 2026). Null when the line names no Chrome version.
+({String agent, String major, String full})? desktopAgent(String ownAgent) {
+  final m = RegExp(r'Chrome/(\d+)\.(\d+\.\d+\.\d+)').firstMatch(ownAgent);
+  if (m == null) return null;
+  return (
+    agent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${m[1]}.0.0.0 Safari/537.36',
+    major: m[1]!,
+    full: '${m[1]}.${m[2]}',
+  );
+}
+
+/// The line for fetches made beside the browser (a site's icon) when the platform side is not there (a test).
+const fallbackUserAgent =
     'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+
+String? _agent;
+
+/// The line the browser announces, from the WebView's own version; the fixed line without a platform side.
+Future<String> browserAgent() async {
+  if (_agent != null) return _agent!;
+  try {
+    _agent = desktopAgent(await webChannel.invokeMethod<String>('agent') ?? '')?.agent;
+  } catch (_) {
+    // no platform side
+  }
+  return _agent ??= fallbackUserAgent;
+}
 
 bool isWeb(PlayableChannel ch) => ch.source.id == webSourceId;
 
@@ -49,7 +82,7 @@ Uri? namedIconUrl(String html, Uri page) {
 /// Null when nothing is found (the channel's initials are drawn instead).
 Future<String?> faviconFor(String url) async {
   final page = Uri.parse(url);
-  const headers = {'User-Agent': browserUserAgent};
+  final headers = {'User-Agent': await browserAgent()};
   try {
     final named = namedIconUrl((await http.get(page, headers: headers).timeout(const Duration(seconds: 8))).body, page);
     if (named != null) return named.toString();

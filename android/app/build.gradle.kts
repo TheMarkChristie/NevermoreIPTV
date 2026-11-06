@@ -72,3 +72,8 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // the browser's client hints (MainActivity.desktopHints); the WebView plug-in carries the same version
+    implementation("androidx.webkit:webkit:1.15.0")
+}
