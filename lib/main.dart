@@ -12,6 +12,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'core/library.dart';
+import 'core/picks.dart';
 import 'core/presets.dart';
 import 'core/setup_channel.dart';
 import 'core/updates.dart';
@@ -72,6 +73,29 @@ Future<String?> applySetup(Map<Object?, Object?>? setup) async {
       }
     } on FormatException {
       // not base64: ignored, the VPN card says there are no settings
+    }
+  }
+  // tools\install.ps1 -Backup: the picks written where adb can pull them (the app's own external folder)
+  if (setup['kind'] == 'backup') {
+    try {
+      final dir = await getExternalStorageDirectory();
+      if (dir == null) throw const FileSystemException('no external folder');
+      final f = File('${dir.path}${Platform.pathSeparator}$picksFileName');
+      await f.writeAsString(const JsonEncoder.withIndent(' ').convert(library.exportPicks()), flush: true);
+      done.add('picks written');
+    } catch (err) {
+      done.add('the picks could not be written: $err');
+    }
+  }
+  // tools\install.ps1 -Restore: a picks file pushed to the TV, read from its path
+  if (setup['kind'] == 'restore' && setup['path'] is String) {
+    try {
+      final data = jsonDecode(await File(setup['path'] as String).readAsString());
+      final problem = picksProblem(data);
+      if (problem != null) throw FormatException(problem);
+      done.add(await library.restorePicks(Map<String, Object?>.from(data as Map)));
+    } catch (err) {
+      done.add('the picks were not restored: ${err is FormatException ? err.message : err}');
     }
   }
   final code = setup['preset'];

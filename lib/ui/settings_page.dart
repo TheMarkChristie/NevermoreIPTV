@@ -18,6 +18,7 @@ import '../core/xtream.dart';
 import 'add_source_page.dart';
 import 'categories_page.dart';
 import 'manage_source_page.dart';
+import 'phone_page.dart';
 import 'tv.dart';
 import 'vpn_card.dart';
 
@@ -334,6 +335,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       const SizedBox(height: 12),
                       const _PictureCard(),
                       const SizedBox(height: 12),
+                      const _PhoneCard(),
+                      const SizedBox(height: 12),
                       const VpnCard(),
                       const SizedBox(height: 12),
                       const _UpdateCard(),
@@ -623,6 +626,37 @@ class _UpdateCard extends StatelessWidget {
 /// Settings > Picture: the whole picture with bars where its shape does not match the screen, or the screen filled with
 /// the edges cut (Mark, 24 Oct 2026, on a phone: "does not seem to go full size"). A double tap on the picture switches
 /// too, on a touch screen.
+/// Settings > Phone: this TV's picks down to a phone as a file, or a picks file up from it (6 Nov 2026).
+class _PhoneCard extends StatelessWidget {
+  const _PhoneCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: tvSurface, borderRadius: BorderRadius.circular(10)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Phone', style: text.titleMedium),
+          const SizedBox(height: 4),
+          Text(
+            'Your picks as a file on your phone: download this TV\'s to keep, or send a file to make this TV a copy '
+            'of another. In the browser, a held OK opens the phone page for typing and signing in.',
+            style: text.bodyMedium?.copyWith(color: tvMuted),
+          ),
+          const SizedBox(height: 10),
+          TvButton(
+            label: 'Your picks on a phone',
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PhonePage())),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _PictureCard extends StatelessWidget {
   const _PictureCard();
 

@@ -11,12 +11,15 @@
 /// from the start). While a page's video is full screen the keys are the video's: OK plays and pauses, Left and
 /// Right go 10 s back and forward (held: 30 s a step), Up or Down brings the pointer for the player's own buttons
 /// for a moment (it hides after 3 s and the keys are the video's again), Back leaves full screen (Mark, 6 Nov 2026).
+/// A held OK opens "From your phone": a page on the phone types into the box the TV's page has the focus on, or
+/// fills a site's sign-in form (and keeps that sign-in on the TV, to fill it again next time).
 ///
 /// The page sees Android's WebView as it is: no agent line of its own (web.dart says why: Cloudflare's Turnstile
 /// refused every disguise and passed the stock identity).
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/gestures.dart';
@@ -26,7 +29,10 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 
 import '../core/library.dart';
+import '../core/phone_page.dart';
+import '../core/site_logins.dart';
 import '../core/web.dart';
+import 'phone_page.dart';
 import 'tv.dart';
 
 class WebPage extends StatefulWidget {
@@ -58,8 +64,13 @@ class _WebPageState extends State<WebPage> {
 
   /// The page the first Back of a double Back left: that is where the site was left, not the page Back went to.
   String? _beforeBack;
+
+  /// Leaving: a page change the WebView reports after that (the Back it went back on) is not where the site was left.
+  bool _leaving = false;
   bool _leaveHint = false;
   Timer? _leaveTimer;
+  String? _note;
+  Timer? _noteTimer;
 
   @override
   void initState() {
@@ -74,6 +85,7 @@ class _WebPageState extends State<WebPage> {
           onPageStarted: (_) {
             if (mounted) setState(() => _error = null);
           },
+          onPageFinished: (url) => unawaited(_refill(url)),
           onUrlChange: (c) {
             if (mounted && _error != null) setState(() => _error = null);
             _remember(c.url);
@@ -119,13 +131,132 @@ class _WebPageState extends State<WebPage> {
 
   /// The page the site is left on, kept for the next open: one of its own pages only (web.dart onSite).
   void _remember(String? url) {
-    if (url == null || !onSite(widget.site, url)) return;
+    if (_leaving || !mounted || url == null || !onSite(widget.site, url)) return;
     unawaited(library.setSitePage(widget.site, url).catchError((_) {}));
+  }
+
+  /// A line at the top for a moment ("Filled in from the TV's memory").
+  void _say(String what) {
+    _noteTimer?.cancel();
+    setState(() => _note = what);
+    _noteTimer = Timer(const Duration(seconds: 4), () {
+      if (mounted) setState(() => _note = null);
+    });
+  }
+
+  /// The script that fills a sign-in form: the first visible user box and the password box of the form the password
+  /// box is in, set the way a page's own code notices (the input's own setter, then input and change events). Answers
+  /// 'filled', or 'nopw' when the page has no password box.
+  static const _fillJs =
+      "(function(u,p){function set(e,v){var d=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(e),'value');"
+      "if(d&&d.set)d.set.call(e,v);else e.value=v;e.dispatchEvent(new Event('input',{bubbles:true}));"
+      "e.dispatchEvent(new Event('change',{bubbles:true}));}"
+      "var pw=null,pws=document.querySelectorAll('input[type=password]');"
+      "for(var j=0;j<pws.length;j++){if(pws[j].offsetParent!==null){pw=pws[j];break;}}if(!pw)return 'nopw';"
+      "var root=pw.form||document,c=root.querySelectorAll('input[type=email],input[type=text],input:not([type])'),user=null;"
+      "for(var i=0;i<c.length;i++){if(c[i].offsetParent!==null){user=c[i];break;}}"
+      "if(user)set(user,u);set(pw,p);return 'filled';})";
+
+  /// The script that types into the box with the focus; 'typed', or 'none' when no text box has it.
+  static const _typeJs =
+      "(function(t){var e=document.activeElement;if(!e)return 'none';"
+      "if(e.isContentEditable){e.textContent=t;e.dispatchEvent(new Event('input',{bubbles:true}));return 'typed';}"
+      "var tag=(e.tagName||'').toUpperCase();if(tag!=='INPUT'&&tag!=='TEXTAREA')return 'none';"
+      "var d=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(e),'value');if(d&&d.set)d.set.call(e,t);else e.value=t;"
+      "e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));return 'typed';})";
+
+  Future<String> _run(String script, List<String> args) async {
+    final call = '$script(${args.map(jsonEncode).join(',')})';
+    try {
+      return '${await _web.runJavaScriptReturningResult(call)}'.replaceAll('"', '');
+    } catch (_) {
+      return 'error';
+    }
+  }
+
+  /// Fills the page's sign-in form with [login]; the answer for the phone.
+  Future<String> _fill(SiteLogin login) async {
+    final r = await _run(_fillJs, [login.user, login.password]);
+    if (r == 'filled') return 'Filled in on the TV: press its sign-in button with the pointer.';
+    throw const PhoneRefused('The page on the TV has no sign-in box. Open its sign-in page first, then send again.');
+  }
+
+  /// A page just loaded: a sign-in kept for this site fills its form by itself.
+  Future<void> _refill(String url) async {
+    final login = await siteLogins.loginFor(url);
+    if (login == null || !mounted) return;
+    if (await _run(_fillJs, [login.user, login.password]) == 'filled' && mounted) {
+      _say('Sign-in filled in from the TV\'s memory');
+    }
+  }
+
+  /// A held OK: the phone page, with its typing and sign-in sections, open until Close.
+  Future<void> _fromPhone() async {
+    final sections = [
+      PhoneSection(
+        id: 'text',
+        title: 'Send text',
+        intro: 'What you send goes into the box the TV\'s page has the focus on: click into it with the pointer first.',
+        form: '<label for="text-text">Text</label><textarea id="text-text" name="text"></textarea>',
+        onPost: (fields) async {
+          final text = fields['text'] ?? '';
+          if (text.isEmpty) throw const PhoneRefused('Nothing to send.');
+          final r = await _run(_typeJs, [text]);
+          if (r != 'typed') {
+            throw const PhoneRefused(
+              'No text box has the focus on the TV. Click into one with the pointer, then send again.',
+            );
+          }
+          return 'Typed into the box on the TV.';
+        },
+      ),
+      PhoneSection(
+        id: 'login',
+        title: 'Sign in',
+        intro:
+            'Fills the sign-in form on the TV\'s page; the TV keeps the sign-in for this site and fills it in by '
+            'itself next time.',
+        form:
+            '<label for="login-user">Email or user name</label>'
+            '<input id="login-user" type="text" name="user" autocomplete="username">'
+            '<label for="login-password">Password</label>'
+            '<input id="login-password" type="password" name="password" autocomplete="current-password">'
+            '<label class="check"><input type="checkbox" name="remember" checked> Keep on this TV for next time</label>',
+        button: 'Fill in on the TV',
+        onPost: (fields) async {
+          final login = SiteLogin(fields['user'] ?? '', fields['password'] ?? '');
+          if (login.user.isEmpty || login.password.isEmpty) throw const PhoneRefused('Both boxes are needed.');
+          final answer = await _fill(login);
+          if (fields['remember'] == 'yes') {
+            await siteLogins.remember(await _web.currentUrl() ?? widget.site, login);
+          }
+          return answer;
+        },
+      ),
+    ];
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: tvSurface,
+        title: const Text('From your phone'),
+        content: SizedBox(
+          width: 760,
+          child: PhoneSheet(
+            title: 'From your phone',
+            intro: 'Typing and signing in on the TV\'s browser, from here.',
+            sections: sections,
+          ),
+        ),
+        actions: [TvButton(label: 'Close', autofocus: true, onPressed: () => Navigator.of(context).pop())],
+      ),
+    );
   }
 
   @override
   void dispose() {
     _hintTimer?.cancel();
+    _noteTimer?.cancel();
     _leaveTimer?.cancel();
     unawaited(_screen.invokeMethod<void>('awake', {'who': 'web', 'on': false}).catchError((_) {}));
     super.dispose();
@@ -177,6 +308,7 @@ class _WebPageState extends State<WebPage> {
       return;
     }
     if (again && _beforeBack != null) _remember(_beforeBack);
+    _leaving = true;
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -192,6 +324,7 @@ class _WebPageState extends State<WebPage> {
           PointerSurface(
             web: _web,
             onBack: _back,
+            onHold: () => unawaited(_fromPhone()),
             // the plug-in's default way of showing the page (as its full-screen video does): with hybrid composition a
             // real Google TV drew the page over the pointer (24 Oct 2026)
             child: WebViewWidget(controller: _web),
@@ -206,6 +339,24 @@ class _WebPageState extends State<WebPage> {
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(color: tvSurface, borderRadius: BorderRadius.circular(12)),
                   child: Text('${widget.name} did not open: $_error', style: text.titleMedium),
+                ),
+              ),
+            ),
+          if (_note != null)
+            Positioned(
+              top: margin.top,
+              left: 0,
+              right: 0,
+              child: IgnorePointer(
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: tvBackground.withAlpha(225),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(_note!, style: text.bodyMedium),
+                  ),
                 ),
               ),
             ),
@@ -225,7 +376,7 @@ class _WebPageState extends State<WebPage> {
                     child: Text(
                       _leaveHint
                           ? 'Back again to leave ${widget.name}'
-                          : 'Arrows move the pointer  -  OK clicks  -  Back goes back',
+                          : 'Arrows move the pointer  -  OK clicks  -  hold OK: your phone  -  Back goes back',
                       style: text.bodyMedium,
                     ),
                   ),
@@ -241,7 +392,14 @@ class _WebPageState extends State<WebPage> {
 /// A pointer over [child] (a web page or a full-screen video) for the remote: OK is a tap where it points. With
 /// [video], the keys are the video's (play, pause, seek); Up or Down brings the pointer until it hides again.
 class PointerSurface extends StatefulWidget {
-  const PointerSurface({super.key, required this.child, required this.onBack, this.web, this.video = false});
+  const PointerSurface({
+    super.key,
+    required this.child,
+    required this.onBack,
+    this.web,
+    this.video = false,
+    this.onHold,
+  });
 
   final Widget child;
 
@@ -253,6 +411,9 @@ class PointerSurface extends StatefulWidget {
 
   /// A page's video gone full screen: the video keys first.
   final bool video;
+
+  /// A held OK (the phone page); a short OK clicks where the pointer is.
+  final VoidCallback? onHold;
 
   @override
   State<PointerSurface> createState() => _PointerSurfaceState();
@@ -268,6 +429,11 @@ class _PointerSurfaceState extends State<PointerSurface> {
 
   /// The keys are the video's (OK, Left, Right), not the pointer's.
   bool _videoKeys = false;
+
+  /// OK is down; its repeats made it a hold (acted on when it comes up: opened during the hold, the remaining
+  /// repeats would press the dialog's own button).
+  bool _selectHeld = false;
+  bool _longDone = false;
   String? _note;
   Timer? _noteTimer;
 
@@ -372,8 +538,21 @@ class _PointerSurfaceState extends State<PointerSurface> {
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     final k = event.logicalKey;
+    final select =
+        k == LogicalKeyboardKey.select || k == LogicalKeyboardKey.enter || k == LogicalKeyboardKey.gameButtonA;
     if (event is KeyUpEvent) {
       _speed = 0;
+      if (select && !_videoKeys && _selectHeld) {
+        final held = _longDone;
+        _selectHeld = false;
+        _longDone = false;
+        if (held) {
+          widget.onHold?.call();
+        } else {
+          unawaited(_click());
+        }
+        return KeyEventResult.handled;
+      }
       return KeyEventResult.ignored;
     }
     if (_videoKeys) {
@@ -403,8 +582,14 @@ class _PointerSurfaceState extends State<PointerSurface> {
     };
     // the first arrow while hidden only shows the pointer where it is
     if (!_wake() && dir != null) return KeyEventResult.handled;
-    if (k == LogicalKeyboardKey.select || k == LogicalKeyboardKey.enter || k == LogicalKeyboardKey.gameButtonA) {
-      if (event is KeyDownEvent) unawaited(_click());
+    if (select) {
+      // the click comes on the way up (a hold opens the phone page instead)
+      if (event is KeyDownEvent) {
+        _selectHeld = true;
+        _longDone = false;
+      } else if (event is KeyRepeatEvent && _selectHeld && widget.onHold != null) {
+        _longDone = true;
+      }
       return KeyEventResult.handled;
     }
     if (k == LogicalKeyboardKey.channelUp || k == LogicalKeyboardKey.pageUp) {

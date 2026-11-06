@@ -33,6 +33,10 @@ Flutter 3.47 and the Android SDK 36; Java 17.
 Release builds are signed with the key named in `android/key.properties` (not in the repo); without it they fall back
 to the debug key. `tools\release.ps1 -Version X -Publish` builds the APK and publishes it as the GitHub release `vX`.
 
+## From a phone
+
+In the browser, hold OK for "From your phone": a page on your phone (scan the code) types into the TV's page or fills a site's sign-in form, which the TV keeps and fills in again next time. Settings > Phone serves this TV's picks as a file to download, and takes a picks file to make the TV a copy of another; `tools\install.ps1 -Backup <file>` and `-Restore <file>` do the same from a PC.
+
 ## Install
 
 - **From GitHub:** the APK on the [Releases](https://github.com/TheMarkChristie/NevermoreIPTV/releases) page, copied to

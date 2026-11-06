@@ -13,6 +13,7 @@ import 'package:path_provider/path_provider.dart';
 import 'defaults.dart';
 import 'guide.dart';
 import 'model.dart';
+import 'picks.dart';
 import 'offthread.dart';
 import 'reasons.dart';
 import 'show_search.dart';
@@ -487,6 +488,59 @@ class Library extends ChangeNotifier {
         {'group': groupId, 'name': name},
       ]);
     }
+  }
+
+  /// Everything this TV was set up with, for a picks file (picks.dart; Mark, 6 Nov 2026: "export and restore the
+  /// picks"): the sources with their logins (his choice), each source's picks, the category order, the guide files
+  /// ticked, Fit / Fill, the sites' last pages and the radio marks. Not the lists, the guide caches or the house file.
+  Map<String, Object?> exportPicks() => {
+    'nevermore_picks': picksFormat,
+    'exported': DateTime.now().toUtc().toIso8601String(),
+    'sources': [for (final s in sources) s.toJson()],
+    'selections': {for (final s in sources) s.id: (selections[s.id] ?? Selection()).toJson()},
+    'group_order': groupOrder,
+    'epg': epg.toList(),
+    'fill': pictureFill,
+    'pages': sitePages,
+    'radio': radio.toList(),
+  };
+
+  /// This TV made a copy of [data] (another TV's exportPicks, checked with picksProblem first): its sources replaced
+  /// by the file's (their lists read again), the picks, the order, the guide files, Fit / Fill, the pages and the
+  /// radio marks set. Returns the line for the screen.
+  Future<String> restorePicks(Map<String, Object?> data) async {
+    final problem = picksProblem(data);
+    if (problem != null) throw ArgumentError(problem);
+    final incoming = [for (final s in data['sources'] as List) Source.fromJson(Map<String, dynamic>.from(s as Map))];
+    for (final s in List.of(sources)) {
+      if (!incoming.any((x) => x.id == s.id)) await removeSource(s.id);
+    }
+    final sels = data['selections'] is Map ? data['selections'] as Map : const {};
+    for (final s in incoming) {
+      selections[s.id] = Selection.fromJson(sels[s.id]);
+      await _writeJson('selection-${s.id}.json', selections[s.id]!.toJson());
+      await saveSource(s);
+    }
+    groupOrder = [for (final x in (data['group_order'] as List? ?? const [])) '$x'];
+    await _writeJson('layout.json', {'group_order': groupOrder});
+    epg = {
+      for (final c in (data['epg'] as List? ?? const []))
+        if (epgFiles.containsKey('$c')) '$c',
+    };
+    // the free-TV start is not wanted over a restored set-up
+    _freeTvAdded = true;
+    await _saveSettings();
+    pictureFill = data['fill'] == true;
+    sitePages = {
+      for (final e in (data['pages'] is Map ? data['pages'] as Map : const {}).entries) '${e.key}': '${e.value}',
+    };
+    radio = {for (final uid in (data['radio'] as List? ?? const [])) '$uid'};
+    await _saveDevice();
+    notifyListeners();
+    scheduleGuideRebuild();
+    unawaited(refreshGuide());
+    return 'Restored ${incoming.length} source${incoming.length == 1 ? '' : 's'} with their picks, '
+        '${epg.length} guide file${epg.length == 1 ? '' : 's'}; the lists are being read';
   }
 
   /// The categories' order on the TV, as given.

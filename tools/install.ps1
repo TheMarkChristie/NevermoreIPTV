@@ -19,6 +19,8 @@
     tools\install.ps1 -Tv 192.168.1.50 -NoInstall -M3uUrl https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8 -SourceName Free-TV
 
     tools\install.ps1 -Tv 192.168.1.50 -NoInstall -VpnConfig $env:USERPROFILE\Downloads\wg-US-FREE-12.conf
+    tools\install.ps1 -Tv 192.168.1.50 -NoInstall -Backup picks.json      (this TV's picks, logins included, to a file)
+    tools\install.ps1 -Tv 192.168.1.50 -NoInstall -Restore picks.json     (the TV becomes a copy of the file)
 
     A source handed in replaces the source of the same name on the TV, else it is added. -VpnConfig hands in a
     WireGuard file from any VPN (Proton, Mullvad, Surfshark, Windscribe...) for a server outside the UK; its private key
@@ -43,6 +45,8 @@ param(
     [switch] $Pair,
     [switch] $NoInstall,
     [switch] $PlaybackTest,
+    [string] $Backup,
+    [string] $Restore,
     [ValidateSet('texture', 'platform')] [string] $View = 'texture'
 )
 $ErrorActionPreference = 'Stop'
@@ -126,7 +130,17 @@ if ($EnvFile) {
 }
 if ($login -and ($login.Values | Where-Object { -not $_ })) { throw 'The login is missing the server address, username or password.' }
 
-if ($login -or $M3uUrl -or $VpnConfig -or $Preset -or $PlaybackTest) {
+if ($Restore) {
+    # the picks file goes where the app can read it by path; the hand-in names it
+    $tmp = '/data/local/tmp/nevermore-picks.json'
+    Write-Host "> adb -s $serial push $Restore $tmp"
+    # adb's transfer summary goes to stderr, which would stop the script under Stop
+    $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    & $adb -s $serial push (Get-Item $Restore).FullName $tmp 2>&1 | ForEach-Object { Write-Host "$_" }
+    $ErrorActionPreference = $eap
+    & $adb -s $serial shell chmod 644 $tmp
+}
+if ($login -or $M3uUrl -or $VpnConfig -or $Preset -or $PlaybackTest -or $Backup -or $Restore) {
     $parts = @("am start -S -n $package/.Setup")
     $shown = @("am start -S -n $package/.Setup")
     if ($Preset) {
@@ -153,6 +167,12 @@ if ($login -or $M3uUrl -or $VpnConfig -or $Preset -or $PlaybackTest) {
             $shown += $(if ($extra[0] -in 'username', 'password') { "--es $($extra[0]) '***'" } else { "--es $($extra[0]) $(Quote-Sh $extra[1])" })
         }
     }
+    if ($Backup) {
+        $parts += '--es kind backup'; $shown += '--es kind backup'
+    }
+    if ($Restore) {
+        $parts += "--es kind restore --es path $tmp"; $shown += "--es kind restore --es path $tmp"
+    }
     if ($PlaybackTest) {
         $parts += '--ez autorun true'; $shown += '--ez autorun true'
         if ($View -eq 'platform') { $parts += '--es view platform'; $shown += '--es view platform' }
@@ -162,6 +182,27 @@ if ($login -or $M3uUrl -or $VpnConfig -or $Preset -or $PlaybackTest) {
     Invoke-AdbShell ($parts -join ' ') | Write-Host
 }
 
+if ($Backup) {
+    # the app writes the file to its own external folder, which adb can pull without root
+    $onTv = "/sdcard/Android/data/$package/files/nevermore-picks.json"
+    $deadline = (Get-Date).AddSeconds(40)
+    $there = $false
+    while ((Get-Date) -lt $deadline) {
+        Start-Sleep -Seconds 2
+        if (((& $adb -s $serial shell "ls $onTv 2>/dev/null") -join '') -match 'nevermore-picks') { $there = $true; break }
+    }
+    if (-not $there) { throw "The TV did not write its picks (is the app installed and did it start?)." }
+    $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    & $adb -s $serial pull $onTv $Backup 2>&1 | ForEach-Object { Write-Host "$_" }
+    $ErrorActionPreference = $eap
+    & $adb -s $serial shell rm $onTv
+    Write-Host "Picks saved to $((Get-Item $Backup).FullName). The logins are in it: keep it safe."
+}
+if ($Restore) {
+    Start-Sleep -Seconds 20
+    & $adb -s $serial shell rm $tmp
+    Write-Host 'Picks handed to the TV; its lists are being read.'
+}
 if ($PlaybackTest) {
     # The app prints "NVTEST ..." lines to the TV's log; follow them until it says done (about five minutes).
     Write-Host 'Playback test running on the TV. Results:'

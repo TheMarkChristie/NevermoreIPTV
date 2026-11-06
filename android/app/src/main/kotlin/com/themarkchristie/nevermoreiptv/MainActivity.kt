@@ -233,7 +233,7 @@ class MainActivity : FlutterActivity() {
         // an app on the TV cannot get. (launchedFromUid is no use here: from API 34 it is -1 for an adb launch.)
         val extras = intent.extras ?: return null
         val setup = mutableMapOf<String, Any?>()
-        for (key in listOf("kind", "name", "url", "username", "password", "guide", "view", "vpn_conf_b64", "vpn_name", "preset")) {
+        for (key in listOf("kind", "name", "url", "username", "password", "guide", "view", "vpn_conf_b64", "vpn_name", "preset", "path")) {
             extras.getString(key)?.let { setup[key] = it }
         }
         setup["autorun"] = extras.getBoolean("autorun", false)
