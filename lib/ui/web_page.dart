@@ -7,7 +7,10 @@
 /// that sends the browser straight on again would otherwise trap Back in its history), and from the first page Back
 /// returns to the TV. A click into a text box leaves the keys with the page for typing; Back gives them to the pointer
 /// again. Pages cannot open windows by themselves; a link that opens a new tab opens here. The screen stays on while a
-/// site is open.
+/// site is open. A site reopens at the page it was left on (one of its own pages; a held OK in the guide opens it
+/// from the start). While a page's video is full screen the keys are the video's: OK plays and pauses, Left and
+/// Right go 10 s back and forward (held: 30 s a step), Up or Down brings the pointer for the player's own buttons
+/// for a moment (it hides after 3 s and the keys are the video's again), Back leaves full screen (Mark, 6 Nov 2026).
 ///
 /// The page sees Android's WebView as it is: no agent line of its own (web.dart says why: Cloudflare's Turnstile
 /// refused every disguise and passed the stock identity).
@@ -22,13 +25,20 @@ import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 
+import '../core/library.dart';
+import '../core/web.dart';
 import 'tv.dart';
 
 class WebPage extends StatefulWidget {
-  const WebPage({super.key, required this.name, required this.url});
+  const WebPage({super.key, required this.name, required this.url, String? site}) : site = site ?? url;
 
   final String name;
+
+  /// The page to open.
   final String url;
+
+  /// The site it belongs to (the house file's address), under which its last page is kept.
+  final String site;
 
   @override
   State<WebPage> createState() => _WebPageState();
@@ -45,6 +55,9 @@ class _WebPageState extends State<WebPage> {
   bool _fullScreen = false;
   Timer? _hintTimer;
   DateTime? _lastBack;
+
+  /// The page the first Back of a double Back left: that is where the site was left, not the page Back went to.
+  String? _beforeBack;
   bool _leaveHint = false;
   Timer? _leaveTimer;
 
@@ -61,8 +74,9 @@ class _WebPageState extends State<WebPage> {
           onPageStarted: (_) {
             if (mounted) setState(() => _error = null);
           },
-          onUrlChange: (_) {
+          onUrlChange: (c) {
             if (mounted && _error != null) setState(() => _error = null);
+            _remember(c.url);
           },
           // a mailto:, tel: or app link has nowhere to go on a TV, and would only leave an error card on the page
           onNavigationRequest: (r) =>
@@ -103,6 +117,12 @@ class _WebPageState extends State<WebPage> {
     await _web.loadRequest(Uri.parse(widget.url));
   }
 
+  /// The page the site is left on, kept for the next open: one of its own pages only (web.dart onSite).
+  void _remember(String? url) {
+    if (url == null || !onSite(widget.site, url)) return;
+    unawaited(library.setSitePage(widget.site, url).catchError((_) {}));
+  }
+
   @override
   void dispose() {
     _hintTimer?.cancel();
@@ -129,7 +149,7 @@ class _WebPageState extends State<WebPage> {
         MaterialPageRoute<void>(
           builder: (_) => Scaffold(
             backgroundColor: Colors.black,
-            body: PointerSurface(onBack: () async => onHidden(), child: view),
+            body: PointerSurface(web: _web, video: true, onBack: () async => onHidden(), child: view),
           ),
         ),
       ),
@@ -147,6 +167,7 @@ class _WebPageState extends State<WebPage> {
     final again = _lastBack != null && now.difference(_lastBack!) < const Duration(seconds: 2);
     _lastBack = now;
     if (!again && await _web.canGoBack()) {
+      _beforeBack = await _web.currentUrl();
       await _web.goBack();
       _leaveTimer?.cancel();
       if (mounted) setState(() => _leaveHint = true);
@@ -155,6 +176,7 @@ class _WebPageState extends State<WebPage> {
       });
       return;
     }
+    if (again && _beforeBack != null) _remember(_beforeBack);
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -216,17 +238,21 @@ class _WebPageState extends State<WebPage> {
   }
 }
 
-/// A pointer over [child] (a web page or a full-screen video) for the remote: OK is a tap where it points.
+/// A pointer over [child] (a web page or a full-screen video) for the remote: OK is a tap where it points. With
+/// [video], the keys are the video's (play, pause, seek); Up or Down brings the pointer until it hides again.
 class PointerSurface extends StatefulWidget {
-  const PointerSurface({super.key, required this.child, required this.onBack, this.web});
+  const PointerSurface({super.key, required this.child, required this.onBack, this.web, this.video = false});
 
   final Widget child;
 
   /// Back while the pointer has the keys.
   final Future<void> Function() onBack;
 
-  /// Asked whether a click went into a text box.
+  /// Asked whether a click went into a text box, and told the video keys.
   final WebViewController? web;
+
+  /// A page's video gone full screen: the video keys first.
+  final bool video;
 
   @override
   State<PointerSurface> createState() => _PointerSurfaceState();
@@ -239,6 +265,11 @@ class _PointerSurfaceState extends State<PointerSurface> {
   double _speed = 0;
   bool _typing = false;
   bool _scrolling = false;
+
+  /// The keys are the video's (OK, Left, Right), not the pointer's.
+  bool _videoKeys = false;
+  String? _note;
+  Timer? _noteTimer;
 
   /// The pointer hides after a few seconds without a key, as a mouse pointer does over a video (Mark, 24 Oct 2026:
   /// "when you play the video full screen it stays"); the next arrow shows it where it was.
@@ -255,17 +286,34 @@ class _PointerSurfaceState extends State<PointerSurface> {
   void initState() {
     super.initState();
     _idle = Timer(_hideAfter, _hide);
+    _videoKeys = widget.video;
+    if (widget.video) {
+      _say('OK play / pause  -  Left / Right 10 s  -  Up: the pointer a moment  -  Back: leave', seconds: 6);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _keys.requestFocus();
+      });
+    }
   }
 
   @override
   void dispose() {
     _idle?.cancel();
+    _noteTimer?.cancel();
     _keys.dispose();
     super.dispose();
   }
 
+  /// The pointer hides; over a full-screen video the keys are the video's again (Back there reaches the video's own
+  /// view as well, which leaves full screen on it, so the pointer cannot be left with Back).
   void _hide() {
-    if (mounted) setState(() => _shown = false);
+    if (!mounted) return;
+    setState(() {
+      _shown = false;
+      if (widget.video && !_videoKeys) {
+        _videoKeys = true;
+        _say('The video keys');
+      }
+    });
   }
 
   /// A key used: the pointer stays (or comes back) for a few seconds more. False when it was hidden.
@@ -277,12 +325,75 @@ class _PointerSurfaceState extends State<PointerSurface> {
     return false;
   }
 
+  /// A word at the top for a moment ("Paused", "10 s back").
+  void _say(String what, {int seconds = 2}) {
+    _noteTimer?.cancel();
+    _note = what;
+    if (mounted) setState(() {});
+    _noteTimer = Timer(Duration(seconds: seconds), () {
+      if (mounted) setState(() => _note = null);
+    });
+  }
+
+  /// The page's full-screen video element (the one inside document.fullscreenElement), told to play, pause or seek.
+  static const _videoJs =
+      "(function(c,d){var e=document.fullscreenElement||document.webkitFullscreenElement||document.body;"
+      "var v=e.tagName==='VIDEO'?e:e.querySelector('video');if(!v)return 'none';"
+      "if(c==='toggle'){if(v.paused){v.play();return 'playing';}v.pause();return 'paused';}"
+      "var s=v.seekable,end=s&&s.length?s.end(s.length-1):v.duration;var t=v.currentTime+d;if(t<0)t=0;"
+      "if(isFinite(end)&&t>end)t=end;v.currentTime=t;return 'seek';})";
+
+  /// [cmd] 'toggle' or 'seek' by [seconds]. A page whose player has no video element the page can reach (one in a
+  /// frame of its own) gets the pointer instead, as before.
+  Future<void> _video(String cmd, [int seconds = 0]) async {
+    final web = widget.web;
+    if (web == null) return;
+    String r;
+    try {
+      r = '${await web.runJavaScriptReturningResult("$_videoJs('$cmd',$seconds)")}'.replaceAll('"', '');
+    } catch (_) {
+      r = 'none';
+    }
+    if (!mounted) return;
+    _keys.requestFocus();
+    switch (r) {
+      case 'playing':
+        _say('Playing');
+      case 'paused':
+        _say('Paused');
+      case 'seek':
+        _say(seconds < 0 ? '${-seconds} s back' : '$seconds s forward');
+      default:
+        setState(() => _videoKeys = false);
+        _wake();
+        _say('This player has its own buttons: the pointer');
+    }
+  }
+
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    final k = event.logicalKey;
     if (event is KeyUpEvent) {
       _speed = 0;
       return KeyEventResult.ignored;
     }
-    final k = event.logicalKey;
+    if (_videoKeys) {
+      if (k == LogicalKeyboardKey.select || k == LogicalKeyboardKey.enter || k == LogicalKeyboardKey.gameButtonA) {
+        if (event is KeyDownEvent) unawaited(_video('toggle'));
+        return KeyEventResult.handled;
+      }
+      if (k == LogicalKeyboardKey.arrowLeft || k == LogicalKeyboardKey.arrowRight) {
+        final step = event is KeyRepeatEvent ? 30 : 10;
+        unawaited(_video('seek', k == LogicalKeyboardKey.arrowLeft ? -step : step));
+        return KeyEventResult.handled;
+      }
+      if (k == LogicalKeyboardKey.arrowUp || k == LogicalKeyboardKey.arrowDown) {
+        setState(() => _videoKeys = false);
+        _wake();
+        _say('The pointer, for the buttons of the player');
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
     final dir = switch (k) {
       LogicalKeyboardKey.arrowUp => const Offset(0, -1),
       LogicalKeyboardKey.arrowDown => const Offset(0, 1),
@@ -339,7 +450,9 @@ class _PointerSurfaceState extends State<PointerSurface> {
       PointerUpEvent(timeStamp: _now, pointer: id, position: p, kind: PointerDeviceKind.touch),
     );
     await Future<void>.delayed(const Duration(milliseconds: 400));
+    // the click may have sent a video full screen: that page has the keys now, not this one
     if (!mounted) return;
+    if (ModalRoute.of(context)?.isCurrent != true) return;
     if (await _intoTextBox()) {
       setState(() => _typing = true);
     } else {
@@ -422,8 +535,21 @@ class _PointerSurfaceState extends State<PointerSurface> {
             return Stack(
               fit: StackFit.expand,
               children: [
-                widget.child,
-                if (!_typing)
+                // a full-screen video's own view takes Android's focus as it appears, and the keys with it; Flutter
+                // only tells it to let go when the focus moves on from its node, so it is let in and sent away
+                // (the page's view is handled the same way after each click). Touches need no focus
+                if (widget.video)
+                  Focus(
+                    skipTraversal: true,
+                    descendantsAreTraversable: false,
+                    onFocusChange: (has) {
+                      if (has && _videoKeys) _keys.requestFocus();
+                    },
+                    child: widget.child,
+                  )
+                else
+                  widget.child,
+                if (!_typing && !_videoKeys)
                   Positioned(
                     left: at.dx,
                     top: at.dy,
@@ -432,6 +558,24 @@ class _PointerSurfaceState extends State<PointerSurface> {
                         opacity: _shown ? 1 : 0,
                         duration: const Duration(milliseconds: 250),
                         child: const CustomPaint(size: Size(24, 34), painter: _Arrow()),
+                      ),
+                    ),
+                  ),
+                if (_note != null)
+                  Positioned(
+                    top: margin.top,
+                    left: 0,
+                    right: 0,
+                    child: IgnorePointer(
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: tvBackground.withAlpha(225),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(_note!),
+                        ),
                       ),
                     ),
                   ),

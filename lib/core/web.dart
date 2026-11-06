@@ -26,6 +26,14 @@ const iconUserAgent =
 
 bool isWeb(PlayableChannel ch) => ch.source.id == webSourceId;
 
+/// Whether [url] is a page of [site] itself (the same host, "www." aside): the page a site reopens at is one of its
+/// own, not a sign-in made elsewhere or a sponsor's link.
+bool onSite(String site, String url) {
+  String host(String u) => (Uri.tryParse(u)?.host ?? '').toLowerCase().replaceFirst(RegExp(r'^www\.'), '');
+  final s = host(site);
+  return s.isNotEmpty && host(url) == s;
+}
+
 final _link = RegExp(r'<link\b[^>]*>', caseSensitive: false);
 final _attr = RegExp(r'''([a-zA-Z-]+)\s*=\s*["']([^"']*)["']''');
 final _size = RegExp(r'(\d+)x\d+');

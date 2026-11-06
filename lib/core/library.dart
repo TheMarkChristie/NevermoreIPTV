@@ -251,6 +251,9 @@ class Library extends ChangeNotifier {
       siteIcons = {
         for (final e in (device['icons'] is Map ? device['icons'] as Map : const {}).entries) '${e.key}': '${e.value}',
       };
+      sitePages = {
+        for (final e in (device['pages'] is Map ? device['pages'] as Map : const {}).entries) '${e.key}': '${e.value}',
+      };
     }
     final settings = await _readJson('settings.json');
     if (settings is Map && settings['epg'] is List) epg = {for (final c in settings['epg'] as List) '$c'};
@@ -614,10 +617,25 @@ class Library extends ChangeNotifier {
     await _saveDevice();
   }
 
+  /// Web site address -> the page it was left on (one of its own, web.dart onSite), where the next open goes
+  /// (Mark, 6 Nov 2026: "open a site where you left it"). A held OK on the site opens it from the start.
+  Map<String, String> sitePages = {};
+
+  Future<void> setSitePage(String site, String? page) async {
+    if (sitePages[site] == page) return;
+    if (page == null) {
+      sitePages.remove(site);
+    } else {
+      sitePages[site] = page;
+    }
+    await _saveDevice();
+  }
+
   Future<void> _saveDevice() => _writeJson('device.json', {
     'last': ?lastChannel,
     'radio': radio.toList(),
     'icons': siteIcons,
+    'pages': sitePages,
     'fill': pictureFill,
   });
 

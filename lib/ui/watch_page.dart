@@ -17,6 +17,7 @@ import '../core/library.dart';
 import '../core/model.dart';
 import '../core/player_state.dart';
 import '../core/show_search.dart';
+import '../core/stream_facts.dart';
 import '../core/presets.dart';
 import '../core/setup_channel.dart';
 import '../core/vpn.dart';
@@ -60,6 +61,8 @@ class _WatchPageState extends State<WatchPage> {
 
   bool _info = false;
   Timer? _infoTimer;
+  StreamFacts? _facts;
+  Timer? _factsTimer;
   Timer? _zapTimer;
   DateTime? _lastBack;
   bool _backHint = false;
@@ -127,6 +130,7 @@ class _WatchPageState extends State<WatchPage> {
 
   @override
   void dispose() {
+    _factsTimer?.cancel();
     library.removeListener(_onLibrary);
     vpn.removeListener(_onVpn);
     _life.dispose();
@@ -237,6 +241,7 @@ class _WatchPageState extends State<WatchPage> {
     _keepAwake(false);
     final p = _player;
     _player = null;
+    _facts = null;
     if (p == null) return;
     p.removeListener(_onPlayerValue);
     await p.pause();
@@ -361,12 +366,29 @@ class _WatchPageState extends State<WatchPage> {
     });
   }
 
+  /// The bar's facts line, read from the player while the bar shows (they settle over the first seconds).
+  Future<void> _pollFacts() async {
+    if (!_info) {
+      _factsTimer?.cancel();
+      return;
+    }
+    final p = _player;
+    if (p == null || !p.value.isInitialized) return;
+    // the player's id is the plug-in's handle on it: the only way to ask the plug-in about this player
+    // ignore: invalid_use_of_visible_for_testing_member
+    final facts = await readStreamFacts(p.playerId);
+    if (mounted && _info && facts != null && facts.known) setState(() => _facts = facts);
+  }
+
   void _showInfo() {
     _infoTimer?.cancel();
     setState(() => _info = true);
     _infoTimer = Timer(const Duration(seconds: 5), () {
       if (mounted) setState(() => _info = false);
     });
+    _factsTimer?.cancel();
+    _factsTimer = Timer.periodic(const Duration(seconds: 2), (_) => unawaited(_pollFacts()));
+    unawaited(_pollFacts());
   }
 
   // ---- the guide, Settings, Manage channels ----
@@ -396,6 +418,13 @@ class _WatchPageState extends State<WatchPage> {
   }
 
   /// Stops playback (one connection: nothing plays behind other screens), opens [page], and on return plays on.
+  /// A site in the browser, at the page it was left on (6 Nov 2026), or from its start.
+  Future<void> _openSite(PlayableChannel ch, {bool fromStart = false}) {
+    final site = ch.channel.url ?? '';
+    final page = fromStart ? null : library.sitePages[site];
+    return _leaveFor(WebPage(name: ch.name, url: page ?? site, site: site));
+  }
+
   Future<void> _leaveFor(Widget page) async {
     // a second OK while the stop is under way (a double press) would push a second page
     if (_away) return;
@@ -602,7 +631,7 @@ class _WatchPageState extends State<WatchPage> {
                   onPlay: (ch, category) {
                     // a site: the browser, with the TV stopped meanwhile
                     if (isWeb(ch)) {
-                      unawaited(_leaveFor(WebPage(name: ch.name, url: ch.channel.url ?? '')));
+                      unawaited(_openSite(ch));
                       return;
                     }
                     _autoStart = null;
@@ -613,6 +642,7 @@ class _WatchPageState extends State<WatchPage> {
                   onClose: _closeGuide,
                   onSettings: () => unawaited(_openSettings()),
                   onManage: (ch) => unawaited(_openManage(ch)),
+                  onOpenSite: (ch) => unawaited(_openSite(ch, fromStart: true)),
                 ),
               if (_notice != null)
                 Positioned(
@@ -769,6 +799,8 @@ class _WatchPageState extends State<WatchPage> {
                       style: text.bodyMedium?.copyWith(color: tvMuted),
                     ),
                   Text('${ch.category}  -  ${ch.source.name}', style: text.bodySmall?.copyWith(color: tvMuted)),
+                  if (_facts != null && describeFacts(_facts!).isNotEmpty)
+                    Text(describeFacts(_facts!), style: text.bodySmall?.copyWith(color: tvMuted)),
                 ],
               ),
             ),

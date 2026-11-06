@@ -4,6 +4,15 @@ import 'package:nevermore_iptv/core/presets.dart';
 import 'package:nevermore_iptv/core/web.dart';
 
 void main() {
+  test('a site reopens only at one of its own pages', () {
+    const site = 'https://www.clubtv.example/no';
+    expect(onSite(site, 'https://www.clubtv.example/no/login'), isTrue);
+    expect(onSite(site, 'https://clubtv.example/watch/123'), isTrue);
+    expect(onSite(site, 'https://accounts.example.com/signin?back=clubtv.example'), isFalse);
+    expect(onSite(site, 'about:blank'), isFalse);
+    expect(onSite('not a site', 'https://clubtv.example/'), isFalse);
+  });
+
   test('sites are read from the house file; no address, no site; no name, the host', () {
     final sites = sitesFromJson({
       'sites': [

@@ -27,6 +27,9 @@ public class VideoPlayerPlugin implements FlutterPlugin, AndroidVideoPlayerApi {
   private final VideoPlayerOptions sharedOptions = new VideoPlayerOptions();
   private long nextPlayerIdentifier = 1;
 
+  // Nevermore IPTV (patch 4): the plug-in attached to the engine, for factsOf
+  @Nullable private static VideoPlayerPlugin attached;
+
   /** Register this with the v2 embedding for the plugin to respond to lifecycle callbacks. */
   public VideoPlayerPlugin() {}
 
@@ -41,6 +44,7 @@ public class VideoPlayerPlugin implements FlutterPlugin, AndroidVideoPlayerApi {
             injector.flutterLoader()::getLookupKeyForAsset,
             binding.getTextureRegistry());
     flutterState.startListening(this, binding.getBinaryMessenger());
+    attached = this;
 
     binding
         .getPlatformViewRegistry()
@@ -54,6 +58,7 @@ public class VideoPlayerPlugin implements FlutterPlugin, AndroidVideoPlayerApi {
     if (flutterState == null) {
       Log.wtf(TAG, "Detached from the engine before registering to it.");
     }
+    attached = null;
     flutterState.stopListening(binding.getBinaryMessenger());
     flutterState = null;
     onDestroy();
@@ -161,6 +166,23 @@ public class VideoPlayerPlugin implements FlutterPlugin, AndroidVideoPlayerApi {
         () -> VideoPlayerInstanceApi.Companion.setUp(messenger, null, channelSuffix));
 
     videoPlayers.put(id, player);
+  }
+
+  /**
+   * Nevermore IPTV (patch 4): the facts of the player with {@code playerId} ({@link VideoPlayer#facts}); null without
+   * such a player. For the app's own channel (its MainActivity), on the main thread.
+   */
+  @Nullable
+  public static java.util.Map<String, Object> factsOf(long playerId) {
+    VideoPlayerPlugin plugin = attached;
+    if (plugin == null || plugin.flutterState == null) {
+      return null;
+    }
+    VideoPlayer player = plugin.videoPlayers.get(playerId);
+    if (player == null) {
+      return null;
+    }
+    return player.facts();
   }
 
   @NonNull

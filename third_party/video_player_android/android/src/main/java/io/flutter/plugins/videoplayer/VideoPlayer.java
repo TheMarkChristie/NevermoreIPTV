@@ -21,6 +21,7 @@ import androidx.media3.common.TrackSelectionOverride;
 import androidx.media3.common.Tracks;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.analytics.AnalyticsListener;
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
 import io.flutter.view.TextureRegistry.SurfaceProducer;
 import java.util.ArrayList;
@@ -42,6 +43,38 @@ public abstract class VideoPlayer implements VideoPlayerInstanceApi {
 
   private final Handler mainHandler = new Handler(Looper.getMainLooper());
   private boolean isDisposed = false;
+
+  // Nevermore IPTV (patch 4): the player's latest download-rate estimate, bits a second (0 until it has one)
+  private long bandwidthEstimate = 0;
+
+  // Nevermore IPTV (patch 4, see NEVERMORE.md): what plays, for the app's channel bar - the video and audio formats as
+  // the player knows them now and the measured download rate. On the main thread; empty once disposed or before
+  // anything is known.
+  @NonNull
+  public java.util.Map<String, Object> facts() {
+    java.util.Map<String, Object> out = new java.util.HashMap<>();
+    if (isDisposed) {
+      return out;
+    }
+    Format video = exoPlayer.getVideoFormat();
+    if (video != null) {
+      out.put("width", video.width);
+      out.put("height", video.height);
+      out.put("frameRate", (double) video.frameRate);
+      out.put("videoCodec", video.sampleMimeType);
+      out.put("videoCodecs", video.codecs);
+      out.put("videoBitrate", video.bitrate);
+    }
+    Format audio = exoPlayer.getAudioFormat();
+    if (audio != null) {
+      out.put("audioCodec", audio.sampleMimeType);
+      out.put("audioBitrate", audio.bitrate);
+      out.put("channels", audio.channelCount);
+      out.put("sampleRate", audio.sampleRate);
+    }
+    out.put("bandwidth", bandwidthEstimate);
+    return out;
+  }
 
   /** A closure-compatible signature since {@link java.util.function.Supplier} is API level 24. */
   public interface ExoPlayerProvider {
@@ -85,6 +118,18 @@ public abstract class VideoPlayer implements VideoPlayerInstanceApi {
     exoPlayer.prepare();
     exoPlayerEventListener = createExoPlayerEventListener(exoPlayer, surfaceProducer);
     exoPlayer.addListener(exoPlayerEventListener);
+    // Nevermore IPTV (patch 4): the download rate as the player measures it
+    exoPlayer.addAnalyticsListener(
+        new AnalyticsListener() {
+          @Override
+          public void onBandwidthEstimate(
+              @NonNull EventTime eventTime,
+              int totalLoadTimeMs,
+              long totalBytesLoaded,
+              long bitrateEstimate) {
+            bandwidthEstimate = bitrateEstimate;
+          }
+        });
     setAudioAttributes(exoPlayer, options.mixWithOthers);
   }
 

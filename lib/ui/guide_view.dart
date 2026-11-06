@@ -40,6 +40,7 @@ class GuideView extends StatefulWidget {
     required this.onClose,
     required this.onSettings,
     required this.onManage,
+    required this.onOpenSite,
   });
 
   final List<Category> categories;
@@ -55,6 +56,9 @@ class GuideView extends StatefulWidget {
   final VoidCallback onClose;
   final VoidCallback onSettings;
   final void Function(PlayableChannel channel) onManage;
+
+  /// A Web site opened from its start (a held OK on it), rather than where it was left.
+  final void Function(PlayableChannel site) onOpenSite;
 
   @override
   State<GuideView> createState() => _GuideViewState();
@@ -394,7 +398,11 @@ class _GuideViewState extends State<GuideView> {
 
   Future<void> _options() async {
     final ch = _focused;
-    if (_onBar || ch == null || isWeb(ch)) return;
+    if (_onBar || ch == null) return;
+    if (isWeb(ch)) {
+      await _siteOptions(ch);
+      return;
+    }
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
@@ -407,6 +415,29 @@ class _GuideViewState extends State<GuideView> {
             onPressed: () {
               Navigator.of(context).pop();
               widget.onManage(ch);
+            },
+          ),
+          TvButton(label: 'Close', onPressed: () => Navigator.of(context).pop()),
+        ],
+      ),
+    );
+    _focus.requestFocus();
+  }
+
+  /// A held OK on a Web site: from the start, rather than where it was left (6 Nov 2026).
+  Future<void> _siteOptions(PlayableChannel site) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: tvSurface,
+        title: Text(site.name),
+        actions: [
+          TvButton(
+            label: 'Open from the start',
+            autofocus: true,
+            onPressed: () {
+              Navigator.of(context).pop();
+              widget.onOpenSite(site);
             },
           ),
           TvButton(label: 'Close', onPressed: () => Navigator.of(context).pop()),
@@ -496,7 +527,10 @@ class _GuideViewState extends State<GuideView> {
           Text(Uri.tryParse(ch.channel.url ?? '')?.host ?? '', style: text.bodyMedium?.copyWith(color: tvMuted)),
           const SizedBox(height: 2),
           Text(ch.name, style: text.titleLarge, maxLines: 1, overflow: TextOverflow.ellipsis),
-          Text('OK opens it in the browser.', style: text.bodySmall?.copyWith(color: tvMuted)),
+          Text(
+            'OK opens it in the browser, where you left it  -  hold OK: from the start.',
+            style: text.bodySmall?.copyWith(color: tvMuted),
+          ),
         ],
       );
     }

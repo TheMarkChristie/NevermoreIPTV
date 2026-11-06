@@ -14,6 +14,7 @@ import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugins.videoplayer.VideoPlayerPlugin
 import io.flutter.plugins.webviewflutter.WebViewFlutterAndroidExternalApi
 import java.io.File
 
@@ -137,6 +138,13 @@ class MainActivity : FlutterActivity() {
                     forgetVpnCopy()
                     result.success(null)
                 }
+                else -> result.notImplemented()
+            }
+        }
+        // what plays, for the channel bar's facts line (the player plug-in's patch 4)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nevermore/player").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "facts" -> result.success(VideoPlayerPlugin.factsOf((call.arguments as Number).toLong()))
                 else -> result.notImplemented()
             }
         }
