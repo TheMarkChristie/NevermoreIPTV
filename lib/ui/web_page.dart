@@ -8,6 +8,9 @@
 /// returns to the TV. A click into a text box leaves the keys with the page for typing; Back gives them to the pointer
 /// again. Pages cannot open windows by themselves; a link that opens a new tab opens here. The screen stays on while a
 /// site is open.
+///
+/// The page sees Android's WebView as it is: no agent line of its own (web.dart says why: Cloudflare's Turnstile
+/// refused every disguise and passed the stock identity).
 library;
 
 import 'dart:async';
@@ -19,7 +22,6 @@ import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 
-import '../core/web.dart';
 import 'tv.dart';
 
 class WebPage extends StatefulWidget {
@@ -33,6 +35,7 @@ class WebPage extends StatefulWidget {
 }
 
 class _WebPageState extends State<WebPage> {
+  static const _native = MethodChannel('nevermore/web');
   static const _screen = MethodChannel('nevermore/screen');
 
   late final WebViewController _web;
@@ -89,20 +92,12 @@ class _WebPageState extends State<WebPage> {
       if (cookies is AndroidWebViewCookieManager) await cookies.setAcceptThirdPartyCookies(android, true);
       // a plain-http stream on an https page
       await android.setMixedContentMode(MixedContentMode.compatibilityMode);
-      // what the browser announces (desktopAgent): the desktop line of the WebView's own version, with client hints
-      // set on the platform side to say the same; a WebView too old to set hints keeps its own line, which agrees with
-      // itself. The pop-up blocker is set in the same call: the plug-in lets scripts open windows by themselves
+      // the pop-up blocker: the plug-in lets scripts open windows by themselves (and loads them over the page)
       try {
-        final desktop = desktopAgent(await webChannel.invokeMethod<String>('agent') ?? '');
-        final prepared = await webChannel.invokeMethod<String>('prepare', {
-          'id': android.webViewIdentifier,
-          'major': desktop?.major,
-          'full': desktop?.full,
-        });
-        if (prepared == 'desktop' && desktop != null) await _web.setUserAgent(desktop.agent);
-        if (prepared == null) debugPrint('browser: not prepared (no WebView)');
+        final blocked = await _native.invokeMethod<bool>('blockPopups', android.webViewIdentifier);
+        if (blocked != true) debugPrint('browser: the pop-up blocker was not set');
       } catch (err) {
-        debugPrint('browser: not prepared: $err');
+        debugPrint('browser: the pop-up blocker was not set: $err');
       }
     }
     await _web.loadRequest(Uri.parse(widget.url));

@@ -10,11 +10,7 @@ import android.os.Process
 import android.provider.Settings
 import android.view.WindowManager
 import android.webkit.CookieManager
-import android.webkit.WebSettings
 import androidx.core.content.FileProvider
-import androidx.webkit.UserAgentMetadata
-import androidx.webkit.WebSettingsCompat
-import androidx.webkit.WebViewFeature
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -55,41 +51,6 @@ class MainActivity : FlutterActivity() {
      * restart"): Home, Back twice or the TV going to standby ends the screen and then the process, so the next start is a
      * cold one on the last channel. A dialog over the app (Android's VPN question) only pauses it, so it does not count.
      */
-    /**
-     * The client hints of desktop Chrome [major] (build [full]) on Linux, as Chrome's own "Desktop site" sends them, so
-     * the Sec-CH-UA headers and navigator.userAgentData agree with the agent line the browser announces. With a custom
-     * line and no hints set, WebView sends its own low-entropy hints ("Android WebView", mobile, Android), and
-     * Cloudflare's "verify you are human" check, which compares the two, failed every time (Mark, 6 Nov 2026). False on
-     * a WebView too old to set them.
-     */
-    private fun desktopHints(settings: WebSettings, major: String, full: String): Boolean {
-        if (!WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA)) return false
-        fun brand(name: String, m: String, f: String) =
-            UserAgentMetadata.BrandVersion.Builder().setBrand(name).setMajorVersion(m).setFullVersion(f).build()
-        val kernel = (System.getProperty("os.version") ?: "").substringBefore('-')
-        val metadata = UserAgentMetadata.Builder()
-            .setBrandVersionList(
-                listOf(brand("Chromium", major, full), brand("Google Chrome", major, full), brand("Not=A?Brand", "24", "24.0.0.0"))
-            )
-            .setFullVersion(full)
-            .setPlatform("Linux")
-            .setPlatformVersion(kernel)
-            .setArchitecture("x86")
-            .setBitness(64)
-            .setModel("")
-            .setMobile(false)
-            .setWow64(false)
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.USER_AGENT_METADATA_FORM_FACTORS)) {
-            metadata.setFormFactors(listOf(UserAgentMetadata.FORM_FACTOR_DESKTOP))
-        }
-        return try {
-            WebSettingsCompat.setUserAgentMetadata(settings, metadata.build())
-            true
-        } catch (_: Exception) {
-            false
-        }
-    }
-
     override fun onStop() {
         super.onStop()
         if (isChangingConfigurations || isFinishing) return
@@ -179,29 +140,15 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
-        // the browser before its first page (web_page.dart): what it announces, and the pop-up blocker
+        // the browser's pop-up blocker: no window may open itself (the WebView plug-in lets scripts open them)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nevermore/web").setMethodCallHandler { call, result ->
             when (call.method) {
-                // the WebView's own agent line, its Chrome version in it (null without a WebView)
-                "agent" -> result.success(try { WebSettings.getDefaultUserAgent(this) } catch (_: Exception) { null })
-                // the pop-up blocker (no window may open itself: the WebView plug-in lets scripts open them) and the
-                // client hints of the desktop line the Dart side then announces: "desktop" when they are set, "own" on
-                // a WebView too old to set them (the Dart side then leaves the WebView's own line, which agrees with
-                // itself), null without a WebView
-                "prepare" -> {
+                "blockPopups" -> {
                     webUsed = true
-                    val args = call.arguments as Map<*, *>
                     @Suppress("DEPRECATION")
-                    val web = WebViewFlutterAndroidExternalApi.getWebView(flutterEngine, (args["id"] as Number).toLong())
-                    if (web == null) {
-                        result.success(null)
-                    } else {
-                        web.settings.javaScriptCanOpenWindowsAutomatically = false
-                        val major = args["major"] as? String
-                        val full = args["full"] as? String
-                        val desktop = major != null && full != null && desktopHints(web.settings, major, full)
-                        result.success(if (desktop) "desktop" else "own")
-                    }
+                    val web = WebViewFlutterAndroidExternalApi.getWebView(flutterEngine, (call.arguments as Number).toLong())
+                    web?.settings?.javaScriptCanOpenWindowsAutomatically = false
+                    result.success(web != null)
                 }
                 else -> result.notImplemented()
             }
