@@ -12,3 +12,8 @@ bool streamEnded({required bool hasError, required bool completed, required bool
   if (hasError) return true;
   return completed && !playing && !buffering;
 }
+
+/// True when the picture has stalled: playing, but the position has not moved for 20 s (Mark, 6 Nov 2026: a stalled
+/// copy is a failed one, and the next copy of the channel is tried).
+bool stalled({required bool playing, required Duration sinceMove}) =>
+    playing && sinceMove >= const Duration(seconds: 20);

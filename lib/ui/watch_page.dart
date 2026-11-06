@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 
+import '../core/copies.dart';
 import '../core/library.dart';
 import '../core/model.dart';
 import '../core/player_state.dart';
@@ -63,6 +64,16 @@ class _WatchPageState extends State<WatchPage> {
   Timer? _infoTimer;
   StreamFacts? _facts;
   Timer? _factsTimer;
+
+  /// The provider's copy of the channel playing instead of the chosen one (copies.dart); null for the chosen one.
+  Channel? _copy;
+
+  /// The copies still to try for the channel once the chosen one has failed; made when first needed.
+  List<Channel>? _copies;
+
+  /// When the position last moved, for the stall watchdog.
+  DateTime _lastMove = DateTime.now();
+  Duration? _lastPosition;
   Timer? _zapTimer;
   DateTime? _lastBack;
   bool _backHint = false;
@@ -253,22 +264,43 @@ class _WatchPageState extends State<WatchPage> {
     final ch = _current;
     if (p == null || ch == null || _starting) return;
     final v = p.value;
+    // the watchdog: the position has not moved for 20 s while playing - the stream stalled (Mark, 6 Nov 2026: a
+    // stalled picture counts as a failure, and the channel's next copy is tried)
+    if (v.position != _lastPosition) {
+      _lastPosition = v.position;
+      _lastMove = DateTime.now();
+    } else if (stalled(playing: v.isPlaying, sinceMove: DateTime.now().difference(_lastMove))) {
+      unawaited(_play(ch, attempt: 1, error: 'the picture stalled', copy: _copy));
+      return;
+    }
     // the stream dropped while watching, or ended without an error (a live stream has no end: the provider closed it):
     // start it again, with the usual retries
     if (!streamEnded(hasError: v.hasError, completed: v.isCompleted, playing: v.isPlaying, buffering: v.isBuffering)) {
       return;
     }
-    unawaited(_play(ch, attempt: 1, error: v.errorDescription ?? 'the stream ended'));
+    unawaited(_play(ch, attempt: 1, error: v.errorDescription ?? 'the stream ended', copy: _copy));
   }
 
-  /// [quick]: no retries (the first start moves on to its next candidate instead).
-  Future<void> _play(PlayableChannel ch, {int attempt = 0, String? error, bool quick = false}) async {
+  /// The next of the channel's copies to try after [failed] (the channel itself or a copy): copies.dart's ring, made
+  /// once per channel and used up; null when none is left (or the source has no list).
+  Channel? _nextCopy(PlayableChannel ch, Channel failed) {
+    final catalog = library.catalogs[ch.source.id];
+    if (catalog == null) return null;
+    final copies = _copies ??= copiesAfter(catalog, ch.channel, failed);
+    return copies.isEmpty ? null : copies.removeAt(0);
+  }
+
+  /// [quick]: no retries (the first start moves on to its next candidate instead). [copy]: the provider's other copy
+  /// of the channel to play in its place (the channel shown stays [ch]); a copy gets one retry, not two.
+  Future<void> _play(PlayableChannel ch, {int attempt = 0, String? error, bool quick = false, Channel? copy}) async {
     final token = ++_token;
     _zapTimer?.cancel();
     await _stopPlayer();
     if (!mounted || token != _token) return;
+    if (attempt == 0 && copy == null) _copies = null;
     setState(() {
       _current = ch;
+      _copy = copy;
       _starting = true;
       _attempt = attempt;
       _error = null;
@@ -276,7 +308,9 @@ class _WatchPageState extends State<WatchPage> {
     if (attempt == 0) _showInfo();
     String failure = error ?? '';
     try {
-      final address = await library.streamFor(ch);
+      final address = await library.streamFor(
+        copy == null ? ch : PlayableChannel(ch.source, copy, ch.name, ch.category),
+      );
       if (token != _token) return;
       // drawn by an Android SurfaceView, not a Flutter texture: on a real Google TV (22 Oct 2026) the texture showed
       // the picture in one corner with the rest of the screen green
@@ -292,6 +326,8 @@ class _WatchPageState extends State<WatchPage> {
       await player.play();
       if (token != _token) return;
       _keepAwake(true);
+      _lastMove = DateTime.now();
+      _lastPosition = null;
       // sound and no picture: a radio channel, shown with the radio sign from now on
       unawaited(library.markRadio(ch.uid, player.value.size.width == 0).catchError((_) {}));
       player.addListener(_onPlayerValue);
@@ -313,11 +349,22 @@ class _WatchPageState extends State<WatchPage> {
     _autoStart = null;
     // a second 10 s timeout has shown that the network is not answering: no third try, the card comes sooner
     final timedOut = failure.contains('TimeoutException');
-    if (!quick && attempt < 2 && !(timedOut && attempt == 1)) {
+    final retries = copy == null ? 2 : 1;
+    if (!quick && attempt < retries && !(timedOut && attempt == 1)) {
       if (mounted) setState(() => _attempt = attempt + 1);
       await Future<void>.delayed(Duration(milliseconds: attempt == 0 ? 1500 : 3000));
-      if (token == _token && mounted) await _play(ch, attempt: attempt + 1, error: failure);
+      if (token == _token && mounted) await _play(ch, attempt: attempt + 1, error: failure, copy: copy);
       return;
+    }
+    // the provider's other copies of the channel (copies.dart): the next one down the order is tried before the
+    // card, once round the ring
+    if (!quick) {
+      final next = _nextCopy(ch, copy ?? ch.channel);
+      if (next != null) {
+        _showNotice('Trying ${next.name} instead');
+        if (mounted) await _play(ch, copy: next, error: failure);
+        return;
+      }
     }
     final why = await library.explainFailure(ch, failure);
     if (token != _token || !mounted) return;
@@ -564,7 +611,11 @@ class _WatchPageState extends State<WatchPage> {
           if (!small) ...[
             const SizedBox(height: 12),
             Text(
-              _attempt == 0 ? 'Starting ${_current?.name ?? ''}...' : 'Trying again (${_attempt + 1} of 3)...',
+              _copy != null
+                  ? 'Trying ${_copy!.name}...'
+                  : _attempt == 0
+                  ? 'Starting ${_current?.name ?? ''}...'
+                  : 'Trying again (${_attempt + 1} of 3)...',
               style: text.bodyMedium?.copyWith(color: tvMuted),
             ),
           ],
@@ -801,6 +852,8 @@ class _WatchPageState extends State<WatchPage> {
                   Text('${ch.category}  -  ${ch.source.name}', style: text.bodySmall?.copyWith(color: tvMuted)),
                   if (_facts != null && describeFacts(_facts!).isNotEmpty)
                     Text(describeFacts(_facts!), style: text.bodySmall?.copyWith(color: tvMuted)),
+                  if (_copy != null)
+                    Text('Playing the copy ${_copy!.name}', style: text.bodySmall?.copyWith(color: tvMuted)),
                 ],
               ),
             ),
