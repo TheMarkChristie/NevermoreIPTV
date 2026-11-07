@@ -43,11 +43,13 @@ void main() {
     expect(copiesAfter(catalog, catalog.channels[4], catalog.channels[4]), isEmpty);
   });
 
-  test('the small picture takes the SD copy, else HD, else FHD, else the channel', () {
+  test('the small picture takes the SD copy, else HD, else FHD, else HEVC, else the channel', () {
     expect(smallerCopy(catalog, catalog.channels[1]).key, '1'); // 4K chosen: the HD copy
     expect(smallerCopy(catalog, catalog.channels[4]).key, '5'); // no copies: itself
     final sd = Catalog(channels: [ch('a', 'X 4K'), ch('b', 'X SD'), ch('c', 'X HD')]);
     expect(smallerCopy(sd, sd.channels[0]).key, 'b');
+    final hevc = Catalog(channels: [ch('a', 'X 4K'), ch('b', 'X HEVC')]);
+    expect(smallerCopy(hevc, hevc.channels[0]).key, 'b');
   });
 
   test('a stall is 20 s without the position moving while playing', () {

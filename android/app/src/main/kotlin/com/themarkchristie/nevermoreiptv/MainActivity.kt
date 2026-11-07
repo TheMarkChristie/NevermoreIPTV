@@ -145,6 +145,11 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nevermore/player").setMethodCallHandler { call, result ->
             when (call.method) {
                 "facts" -> result.success(VideoPlayerPlugin.factsOf((call.arguments as Number).toLong()))
+                // the lowest bitrate of an adaptive stream, for a small picture (the plug-in's patch 5)
+                "lowest" -> {
+                    val args = call.arguments as Map<*, *>
+                    result.success(VideoPlayerPlugin.setLowestBitrate((args["id"] as Number).toLong(), args["on"] as Boolean))
+                }
                 else -> result.notImplemented()
             }
         }

@@ -185,6 +185,16 @@ public class VideoPlayerPlugin implements FlutterPlugin, AndroidVideoPlayerApi {
     return player.facts();
   }
 
+  /** Nevermore IPTV (patch 5): the lowest bitrate of an adaptive stream for the player with {@code playerId}. */
+  public static boolean setLowestBitrate(long playerId, boolean on) {
+    VideoPlayerPlugin plugin = attached;
+    if (plugin == null) {
+      return false;
+    }
+    VideoPlayer player = plugin.videoPlayers.get(playerId);
+    return player != null && player.setLowestBitrate(on);
+  }
+
   @NonNull
   private VideoPlayer getPlayer(long playerId) {
     VideoPlayer player = videoPlayers.get(playerId);

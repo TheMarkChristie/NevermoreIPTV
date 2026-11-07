@@ -1,7 +1,7 @@
 # video_player_android 2.12.2, patched for Nevermore IPTV
 
 A copy of `video_player_android` 2.12.2 from pub.dev (BSD-3, see LICENSE; the `example/`, `test/` and `pigeons/` folders
-left out), used through `dependency_overrides` in the app's `pubspec.yaml`. Four changes, all in
+left out), used through `dependency_overrides` in the app's `pubspec.yaml`. Five changes, all in
 `android/src/main/java/io/flutter/plugins/videoplayer/`, each marked `Nevermore IPTV` in the code:
 
 1. `platformview/PlatformViewExoPlayerEventListener.java`, `sendInitialized()`: a stream with no video track (a radio
@@ -24,5 +24,10 @@ left out), used through `dependency_overrides` in the app's `pubspec.yaml`. Four
    through the plug-in's static `attached` instance. Not for upstream in this shape (a static back door); the proper
    one would be a platform-interface method.
 
-When the plug-in is updated: copy the new version over this folder (keeping this file), apply the four changes again,
+5. `VideoPlayer.java`, `setLowestBitrate(on)`, and `VideoPlayerPlugin.java`, `setLowestBitrate(playerId, on)` (7 Nov
+   2026): an adaptive stream (HLS, DASH) kept to its lowest bitrate through the player's track selection parameters
+   (`setForceLowestBitrate`), for the app's four screens, where four pictures play at a quarter of the screen each.
+   Reached the same way as patch 4.
+
+When the plug-in is updated: copy the new version over this folder (keeping this file), apply the five changes again,
 and check that `flutter pub get` still resolves the override. The first three are worth sending upstream.

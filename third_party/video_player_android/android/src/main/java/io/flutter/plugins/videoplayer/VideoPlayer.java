@@ -17,6 +17,7 @@ import androidx.media3.common.Format;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackParameters;
 import androidx.media3.common.TrackGroup;
+import androidx.media3.common.TrackSelectionParameters;
 import androidx.media3.common.TrackSelectionOverride;
 import androidx.media3.common.Tracks;
 import androidx.media3.common.util.UnstableApi;
@@ -43,6 +44,17 @@ public abstract class VideoPlayer implements VideoPlayerInstanceApi {
 
   private final Handler mainHandler = new Handler(Looper.getMainLooper());
   private boolean isDisposed = false;
+
+  // Nevermore IPTV (patch 5, see NEVERMORE.md): an adaptive stream's lowest bitrate, for a small picture (the app's
+  // four screens). False once disposed.
+  public boolean setLowestBitrate(boolean on) {
+    if (isDisposed) {
+      return false;
+    }
+    TrackSelectionParameters current = exoPlayer.getTrackSelectionParameters();
+    exoPlayer.setTrackSelectionParameters(current.buildUpon().setForceLowestBitrate(on).build());
+    return true;
+  }
 
   // Nevermore IPTV (patch 4): the player's latest download-rate estimate, bits a second (0 until it has one)
   private long bandwidthEstimate = 0;

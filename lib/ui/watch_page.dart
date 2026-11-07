@@ -725,6 +725,8 @@ class _WatchPageState extends State<WatchPage> {
                   behavior: HitTestBehavior.opaque,
                   onTap: _openGuide,
                   onDoubleTap: () => unawaited(_togglePictureFill()),
+                  // a long press, as a held OK on the remote: the four screens (0.8.2, for phones and tablets)
+                  onLongPress: () => unawaited(_openQuad()),
                   // on a touch screen: swipe up for the next channel, down for the previous
                   onVerticalDragEnd: (d) {
                     final v = d.primaryVelocity ?? 0;

@@ -12,6 +12,12 @@
 /// from the bar, Left past All or Right past Settings move it on (the guide's edges). In a guide box the other keys are
 /// the guide's as ever; OK on a channel plays it in that box. On a picture box OK (or a held OK) offers Full screen and
 /// Guide here, Back puts its guide back. Back with all four boxes on the guide leaves, to the channel from before.
+/// By touch (0.8.2): a long press on the picture opens the four screens, a tap on a box picks it, a tap on the picked
+/// picture box (or a long press) opens its menu; an upright screen stacks the four boxes in a column that scrolls.
+/// Also 0.8.2 (Mark: "auto go to lowest bitrate ... always use as much space as we can, you can remove the number 4
+/// ... the window with the active sound needs a light border"): the grid runs edge to edge with a thin gap and no
+/// badge, the picked box has a light border with a glow, and a box's stream is kept to its lowest bitrate (the
+/// smallest copy, and an adaptive stream's lowest rendition through the plug-in's patch 5).
 library;
 
 import 'dart:async';
@@ -23,6 +29,7 @@ import 'package:video_player/video_player.dart';
 import '../core/copies.dart';
 import '../core/library.dart';
 import '../core/model.dart';
+import '../core/stream_facts.dart';
 import 'guide_view.dart';
 import 'tv.dart';
 
@@ -149,6 +156,7 @@ class _QuadPageState extends State<QuadPage> {
     final token = ++box.token;
     await _stopBox(box);
     if (!mounted || token != box.token) return;
+    if (_highlight != i) _setHighlight(i);
     final catalog = library.catalogs[ch.source.id];
     final copy = catalog == null ? ch.channel : smallerCopy(catalog, ch.channel);
     setState(() {
@@ -174,6 +182,9 @@ class _QuadPageState extends State<QuadPage> {
         return;
       }
       await player.setVolume(i == _highlight ? 1 : 0);
+      // the lowest rendition of an adaptive stream: a quarter of the screen needs no more
+      // ignore: invalid_use_of_visible_for_testing_member
+      await forceLowestBitrate(player.playerId, true);
       await player.play();
       if (mounted) setState(() => box.starting = false);
     } catch (err) {
@@ -299,7 +310,8 @@ class _QuadPageState extends State<QuadPage> {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    const gap = 16.0;
+    const gap = 4.0;
+    final upright = isUpright(context);
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -314,52 +326,8 @@ class _QuadPageState extends State<QuadPage> {
             fit: StackFit.expand,
             children: [
               Image.asset('assets/brand/backdrop.png', fit: BoxFit.cover),
-              Padding(
-                padding: overscanOf(context),
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: Row(
-                        children: [
-                          Expanded(child: _box(text, 0)),
-                          const SizedBox(width: gap),
-                          Expanded(child: _box(text, 1)),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: gap),
-                    Expanded(
-                      child: Row(
-                        children: [
-                          Expanded(child: _box(text, 2)),
-                          const SizedBox(width: gap),
-                          Expanded(child: _box(text, 3)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // the mark in the middle: the way in, as a reminder
-              Center(
-                child: IgnorePointer(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: tvBackground.withAlpha(230),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: tvAccent, width: 1.5),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text('4', style: text.headlineMedium?.copyWith(fontWeight: FontWeight.bold)),
-                        Text('OK', style: text.bodySmall?.copyWith(color: tvMuted)),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
+              // edge to edge: the boxes take all the screen there is
+              upright ? Padding(padding: overscanOf(context), child: _column(text, gap)) : _grid(text, gap),
               if (_note != null)
                 Positioned(
                   top: overscanOf(context).top,
@@ -380,44 +348,95 @@ class _QuadPageState extends State<QuadPage> {
     );
   }
 
+  /// The TV's two-by-two grid.
+  Widget _grid(TextTheme text, double gap) => Column(
+    children: [
+      Expanded(
+        child: Row(
+          children: [
+            Expanded(child: _box(text, 0)),
+            SizedBox(width: gap),
+            Expanded(child: _box(text, 1)),
+          ],
+        ),
+      ),
+      SizedBox(height: gap),
+      Expanded(
+        child: Row(
+          children: [
+            Expanded(child: _box(text, 2)),
+            SizedBox(width: gap),
+            Expanded(child: _box(text, 3)),
+          ],
+        ),
+      ),
+    ],
+  );
+
+  /// An upright phone or tablet: the four boxes in a column that scrolls, a picture box 16:9, a guide box taller.
+  Widget _column(TextTheme text, double gap) {
+    final size = MediaQuery.sizeOf(context);
+    final width = size.width - overscanOf(context).horizontal;
+    return ListView(
+      children: [
+        for (var i = 0; i < 4; i++) ...[
+          SizedBox(height: _boxes[i].picture ? width * 9 / 16 : size.height * 0.62, child: _box(text, i)),
+          if (i < 3) SizedBox(height: gap),
+        ],
+      ],
+    );
+  }
+
   Widget _box(TextTheme text, int i) {
     final box = _boxes[i];
     final on = i == _highlight;
+    // the picked box (the one with the sound): a light border with a glow, seen over any picture
     return Container(
       clipBehavior: Clip.hardEdge,
       decoration: BoxDecoration(
         color: Colors.black,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: on ? Colors.white : tvSurface, width: on ? 3 : 2),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: on ? const Color(0xFFDDE8FF) : tvSurface, width: on ? 4 : 1),
+        boxShadow: on
+            ? [BoxShadow(color: const Color(0xFFDDE8FF).withAlpha(140), blurRadius: 14, spreadRadius: 1)]
+            : null,
       ),
-      child: box.picture ? _picture(text, i, box, on) : _guide(i, on),
+      // a tap picks the box; the guide's own taps (a channel, the bar) come first
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () {
+          if (!on) _setHighlight(i);
+        },
+        child: box.picture ? _picture(text, i, box, on) : _guide(i, on),
+      ),
     );
   }
 
   /// The full guide, scaled into the box; only the highlighted box's takes the keys.
   Widget _guide(int i, bool on) {
     final screen = MediaQuery.sizeOf(context);
+    if (isUpright(context)) return _guideView(i, on);
     return FittedBox(
       fit: BoxFit.contain,
       alignment: Alignment.topLeft,
-      child: SizedBox(
-        width: screen.width,
-        height: screen.height,
-        child: GuideView(
-          categories: widget.categories,
-          all: widget.all,
-          category: 0,
-          playing: null,
-          active: on,
-          inBox: true,
-          video: const SizedBox.shrink(),
-          onPlay: (ch, _) => unawaited(_startBox(i, ch)),
-          onClose: _onBack,
-          onSettings: () => unawaited(_leave(const QuadLeave(settings: true))),
-          onManage: (ch) => unawaited(_leave(QuadLeave(manage: ch))),
-          onOpenSite: (ch) => unawaited(_leave(QuadLeave(site: ch))),
-        ),
-      ),
+      child: SizedBox(width: screen.width, height: screen.height, child: _guideView(i, on)),
+    );
+  }
+
+  Widget _guideView(int i, bool on) {
+    return GuideView(
+      categories: widget.categories,
+      all: widget.all,
+      category: 0,
+      playing: null,
+      active: on,
+      inBox: true,
+      video: const SizedBox.shrink(),
+      onPlay: (ch, _) => unawaited(_startBox(i, ch)),
+      onClose: _onBack,
+      onSettings: () => unawaited(_leave(const QuadLeave(settings: true))),
+      onManage: (ch) => unawaited(_leave(QuadLeave(manage: ch))),
+      onOpenSite: (ch) => unawaited(_leave(QuadLeave(site: ch))),
     );
   }
 
@@ -450,6 +469,15 @@ class _QuadPageState extends State<QuadPage> {
                 child: AspectRatio(aspectRatio: v.aspectRatio, child: VideoPlayer(player)),
               );
             },
+          ),
+        // over the picture, not around it: the picture is an Android view and keeps the touches on it. A tap on the
+        // picked box opens its menu (a tap on another box picks it, through the box's own detector)
+        if (on)
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => unawaited(_boxMenu(i)),
+            onLongPress: () => unawaited(_boxMenu(i)),
+            child: const SizedBox.expand(),
           ),
         if (on)
           Positioned(

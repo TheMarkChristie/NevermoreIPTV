@@ -152,3 +152,13 @@ Future<StreamFacts?> readStreamFacts(int playerId) async {
     return null;
   }
 }
+
+/// Keeps the player's adaptive stream (HLS, DASH) to its lowest bitrate, for a small picture (the four screens; Mark,
+/// 7 Nov 2026: "auto go to lowest bitrate"); the plug-in's patch 5. False without a platform side or a player.
+Future<bool> forceLowestBitrate(int playerId, bool on) async {
+  try {
+    return await _channel.invokeMethod<bool>('lowest', {'id': playerId, 'on': on}) ?? false;
+  } catch (_) {
+    return false;
+  }
+}

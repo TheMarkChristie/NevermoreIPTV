@@ -63,11 +63,11 @@ List<Channel> copiesAfter(Catalog catalog, Channel ch, Channel failed) {
 }
 
 /// The copy for a small picture (the four screens, 0.8.0: four streams at once are heavy, and the box is a quarter of
-/// the screen): the SD copy when there is one, else HD, else FHD, else the channel itself (HEVC and 4K are left for
-/// the full screen).
+/// the screen; Mark, 7 Nov 2026: "auto go to lowest bitrate"): the SD copy when there is one, else HD, else FHD,
+/// else HEVC, else the channel itself (4K is left for the full screen).
 Channel smallerCopy(Catalog catalog, Channel ch) {
   final all = [ch, ...copiesOf(catalog, ch)];
-  for (final want in const [4, 3, 2]) {
+  for (final want in const [4, 3, 2, 1]) {
     final found = all.where((c) => qualityRank(c.name) == want).firstOrNull;
     if (found != null) return found;
   }

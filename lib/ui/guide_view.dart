@@ -508,8 +508,8 @@ class _GuideViewState extends State<GuideView> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (_upright) ...[
-              AspectRatio(aspectRatio: 16 / 9, child: preview),
-              const SizedBox(height: 10),
+              // in one of the four screens' boxes there is no picture to preview: the room goes to the grid
+              if (!widget.inBox) ...[AspectRatio(aspectRatio: 16 / 9, child: preview), const SizedBox(height: 10)],
               SizedBox(height: 100, child: ClipRect(child: _detailsPanel(text, descLines: 1))),
             ] else
               SizedBox(
