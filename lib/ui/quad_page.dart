@@ -279,11 +279,15 @@ class _QuadPageState extends State<QuadPage> {
     try {
       final address = await library.streamFor(PlayableChannel(ch.source, copy, ch.name, ch.category));
       if (token != box.token) return;
+      // no Android audio focus (mixWithOthers; 0.9.2): a player that takes it pauses every other player that
+      // handles it, which is how box one stopped the moment a second box started (Mark, 7 Nov 2026: "it stops
+      // playing the channel before when I select what I want to watch"). The sound is the app's own volumes
       final player = VideoPlayerController.networkUrl(
         Uri.parse(address.url),
         formatHint: address.hls ? VideoFormat.hls : null,
         httpHeaders: address.headers,
         viewType: VideoViewType.platformView,
+        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
       );
       box.player = player;
       await player.initialize().timeout(const Duration(seconds: 20));

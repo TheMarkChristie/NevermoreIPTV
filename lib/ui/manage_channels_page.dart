@@ -290,6 +290,7 @@ class _PreviewDialogState extends State<PreviewDialog> {
         formatHint: address.hls ? VideoFormat.hls : null,
         httpHeaders: address.headers,
         viewType: VideoViewType.platformView,
+        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
       );
       if (!mounted) return;
       setState(() => _player = player);
