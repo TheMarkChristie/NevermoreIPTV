@@ -513,12 +513,25 @@ class _WatchPageState extends State<WatchPage> {
     _token++;
     _away = true;
     _zapTimer?.cancel();
-    await _stopPlayer();
+    // the running stream goes to box one as it is: a stop and a fresh start would count twice at the provider for
+    // a while (it keeps a left stream on its books for some seconds) and get the oldest one cut (0.8.3)
+    final handed = _player;
+    final handedCopy = _copy;
+    _keepAwake(false);
+    _player = null;
+    _facts = null;
+    handed?.removeListener(_onPlayerValue);
     if (!mounted) return;
     setState(() => _guideOpen = false);
     final left = await Navigator.of(context).push<QuadLeave>(
       MaterialPageRoute(
-        builder: (_) => QuadPage(categories: _guideCategories, all: _all, start: before),
+        builder: (_) => QuadPage(
+          categories: _guideCategories,
+          all: _all,
+          start: before,
+          startPlayer: handed,
+          startCopy: handedCopy,
+        ),
       ),
     );
     _away = false;

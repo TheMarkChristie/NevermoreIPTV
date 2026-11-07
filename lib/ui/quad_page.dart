@@ -18,6 +18,10 @@
 /// ... the window with the active sound needs a light border"): the grid runs edge to edge with a thin gap and no
 /// badge, the picked box has a light border with a glow, and a box's stream is kept to its lowest bitrate (the
 /// smallest copy, and an adaptive stream's lowest rendition through the plug-in's patch 5).
+/// The provider's stream limit (0.8.3; Mark: "The boxes played; the first one stopped"): the stream that was playing
+/// is handed to box one as it is, never reconnected; before a provider box starts, the account is asked afresh and
+/// the box stays on the guide when the boxes here or the provider's own count would pass the limit; a stream the
+/// provider cuts says so in its box, with Play again in the menu. "Box N" at the top when the highlight moves.
 library;
 
 import 'dart:async';
@@ -29,6 +33,7 @@ import 'package:video_player/video_player.dart';
 import '../core/copies.dart';
 import '../core/library.dart';
 import '../core/model.dart';
+import '../core/player_state.dart';
 import '../core/stream_facts.dart';
 import 'guide_view.dart';
 import 'tv.dart';
@@ -44,13 +49,24 @@ class QuadLeave {
 }
 
 class QuadPage extends StatefulWidget {
-  const QuadPage({super.key, required this.categories, required this.all, this.start});
+  const QuadPage({
+    super.key,
+    required this.categories,
+    required this.all,
+    this.start,
+    this.startPlayer,
+    this.startCopy,
+  });
 
   final List<Category> categories;
   final List<PlayableChannel> all;
 
   /// The channel playing before: the first box starts with it.
   final PlayableChannel? start;
+
+  /// Its player, handed over as it is (the page owns it from here), and the copy it plays.
+  final VideoPlayerController? startPlayer;
+  final Channel? startCopy;
 
   @override
   State<QuadPage> createState() => _QuadPageState();
@@ -65,6 +81,9 @@ class _Box {
   bool starting = false;
   String? problem;
   int token = 0;
+
+  /// Watches the stream for its end (the provider cutting it).
+  VoidCallback? listener;
 
   bool get picture => channel != null;
 }
@@ -81,7 +100,19 @@ class _QuadPageState extends State<QuadPage> {
   void initState() {
     super.initState();
     final start = widget.start;
-    if (start != null) unawaited(_startBox(0, start));
+    final handed = widget.startPlayer;
+    if (start != null && handed != null) {
+      final box = _boxes[0]
+        ..channel = start
+        ..copy = widget.startCopy
+        ..player = handed;
+      _watch(0, box, handed);
+      // ignore: invalid_use_of_visible_for_testing_member
+      unawaited(forceLowestBitrate(handed.playerId, true));
+      unawaited(handed.setVolume(1).catchError((_) {}));
+    } else if (start != null) {
+      unawaited(_startBox(0, start));
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusHighlight();
       _say('Arrows past the edge of a box move to another  -  OK on a picture: Full screen  -  1 to 4 pick a box');
@@ -101,10 +132,10 @@ class _QuadPageState extends State<QuadPage> {
   }
 
   /// A line at the top for a few seconds.
-  void _say(String what) {
+  void _say(String what, {int seconds = 4}) {
     _noteTimer?.cancel();
     setState(() => _note = what);
-    _noteTimer = Timer(const Duration(seconds: 4), () {
+    _noteTimer = Timer(Duration(seconds: seconds), () {
       if (mounted) setState(() => _note = null);
     });
   }
@@ -118,6 +149,7 @@ class _QuadPageState extends State<QuadPage> {
 
   void _setHighlight(int i) {
     if (i < 0 || i > 3) return;
+    if (i != _highlight) _say('Box ${i + 1}', seconds: 2);
     setState(() => _highlight = i);
     for (final (j, box) in _boxes.indexed) {
       unawaited(box.player?.setVolume(j == i ? 1 : 0).catchError((_) {}));
@@ -128,29 +160,74 @@ class _QuadPageState extends State<QuadPage> {
   Future<void> _stopBox(_Box box) async {
     final p = box.player;
     box.player = null;
-    if (p != null) await p.dispose();
+    if (p != null) {
+      if (box.listener != null) p.removeListener(box.listener!);
+      box.listener = null;
+      await p.dispose();
+    }
   }
 
-  /// Why [ch] cannot start in box [i] now: the provider's streams-at-once limit, with the other boxes counted.
-  String? _limitProblem(int i, PlayableChannel ch) {
+  /// The stream watched for its end: the provider cutting it (one too many for its limit) shows in the box, and
+  /// the menu offers Play again.
+  void _watch(int i, _Box box, VideoPlayerController player) {
+    void onValue() {
+      final v = player.value;
+      if (!streamEnded(
+        hasError: v.hasError,
+        completed: v.isCompleted,
+        playing: v.isPlaying,
+        buffering: v.isBuffering,
+      )) {
+        return;
+      }
+      unawaited(_boxStopped(i, box, v.errorDescription));
+    }
+
+    box.listener = onValue;
+    player.addListener(onValue);
+  }
+
+  Future<void> _boxStopped(int i, _Box box, String? error) async {
+    final ch = box.channel;
+    if (ch == null || box.player == null) return;
+    await _stopBox(box);
+    if (!mounted) return;
+    final max = ch.source.isXtream ? (library.statusOf(ch.source.id).account?.max ?? 0) : 0;
+    setState(() {
+      box.problem = max > 0
+          ? 'The stream stopped. Your provider allows $max stream${max == 1 ? '' : 's'} at once and may have cut this '
+                'one; OK, then Play again.'
+          : 'The stream stopped${error == null ? '' : ': $error'}. OK, then Play again.';
+    });
+  }
+
+  /// Why [ch] cannot start in box [i] now: the provider's streams-at-once limit, against the other boxes here and
+  /// the provider's own count (asked afresh: it includes a stream just left, which it keeps on its books for a
+  /// while, and any other device on the login).
+  Future<String?> _limitProblem(int i, PlayableChannel ch) async {
     if (!ch.source.isXtream) return null;
-    final account = library.statusOf(ch.source.id).account;
+    final account = await library.account(ch.source, force: true);
     final max = account?.max ?? 0;
-    if (max <= 0) return null;
+    if (account == null || max <= 0) return null;
     var used = 0;
     for (final (j, box) in _boxes.indexed) {
       if (j != i && box.channel?.source.id == ch.source.id && (box.player != null || box.starting)) used++;
     }
-    if (used < max) return null;
-    return 'Your provider allows $max stream${max == 1 ? '' : 's'} at once: this box stays on the guide';
+    final streams = '$max stream${max == 1 ? '' : 's'} at once';
+    if (used >= max) return 'Your provider allows $streams: this box stays on the guide';
+    if (account.active >= max) {
+      return 'Your provider counts $streams already (one just left, or another device): try again in a moment';
+    }
+    return null;
   }
 
   /// [ch] in box [i], as its smaller copy where the provider has one.
   Future<void> _startBox(int i, PlayableChannel ch) async {
     final box = _boxes[i];
-    final limit = _limitProblem(i, ch);
+    final limit = await _limitProblem(i, ch);
+    if (!mounted) return;
     if (limit != null) {
-      _say(limit);
+      _say(limit, seconds: 6);
       return;
     }
     final token = ++box.token;
@@ -186,6 +263,7 @@ class _QuadPageState extends State<QuadPage> {
       // ignore: invalid_use_of_visible_for_testing_member
       await forceLowestBitrate(player.playerId, true);
       await player.play();
+      _watch(i, box, player);
       if (mounted) setState(() => box.starting = false);
     } catch (err) {
       if (token != box.token) return;
@@ -234,9 +312,18 @@ class _QuadPageState extends State<QuadPage> {
         backgroundColor: tvSurface,
         title: Text(ch.name),
         actions: [
+          if (box.problem != null)
+            TvButton(
+              label: 'Play again',
+              autofocus: true,
+              onPressed: () {
+                Navigator.of(context).pop();
+                unawaited(_startBox(i, ch));
+              },
+            ),
           TvButton(
             label: 'Full screen',
-            autofocus: true,
+            autofocus: box.problem == null,
             onPressed: () {
               Navigator.of(context).pop();
               unawaited(_leave(QuadLeave(channel: ch)));
@@ -317,31 +404,33 @@ class _QuadPageState extends State<QuadPage> {
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _onBack();
       },
-      child: Scaffold(
-        backgroundColor: tvBackground,
-        body: Focus(
-          focusNode: _keys,
-          onKeyEvent: _onKey,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Image.asset('assets/brand/backdrop.png', fit: BoxFit.cover),
-              // edge to edge: the boxes take all the screen there is
-              upright ? Padding(padding: overscanOf(context), child: _column(text, gap)) : _grid(text, gap),
-              if (_note != null)
-                Positioned(
-                  top: overscanOf(context).top,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                      decoration: BoxDecoration(color: tvSurface, borderRadius: BorderRadius.circular(20)),
-                      child: Text(_note!, style: text.bodyMedium),
+      child: KeepAwake(
+        child: Scaffold(
+          backgroundColor: tvBackground,
+          body: Focus(
+            focusNode: _keys,
+            onKeyEvent: _onKey,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.asset('assets/brand/backdrop.png', fit: BoxFit.cover),
+                // edge to edge: the boxes take all the screen there is
+                upright ? Padding(padding: overscanOf(context), child: _column(text, gap)) : _grid(text, gap),
+                if (_note != null)
+                  Positioned(
+                    top: overscanOf(context).top,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                        decoration: BoxDecoration(color: tvSurface, borderRadius: BorderRadius.circular(20)),
+                        child: Text(_note!, style: text.bodyMedium),
+                      ),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
