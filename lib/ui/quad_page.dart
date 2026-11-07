@@ -7,10 +7,11 @@
 /// (copies.dart smallerCopy: SD, else HD, else FHD) and a provider's stream limit keeps a box on the guide; the raven
 /// backdrop (tools/make_backdrop.py) under the grid.
 ///
-/// Keys: 1 to 4 highlight a box (its sound comes on, the others go quiet). In a guide box the keys are the guide's as
-/// ever; OK on a channel plays it in that box. On a picture box the arrows move the highlight, OK (or a held OK) offers
-/// Full screen and Guide here, Back puts its guide back. Back with all four boxes on the guide leaves, to the channel
-/// from before.
+/// Keys: 1 to 4 highlight a box (its sound comes on, the others go quiet); without number keys (Mark, 7 Nov 2026: "Not
+/// many remotes have numbers on them") the arrows do: on a picture box they move the highlight, and in a guide box Up
+/// from the bar, Left past All or Right past Settings move it on (the guide's edges). In a guide box the other keys are
+/// the guide's as ever; OK on a channel plays it in that box. On a picture box OK (or a held OK) offers Full screen and
+/// Guide here, Back puts its guide back. Back with all four boxes on the guide leaves, to the channel from before.
 library;
 
 import 'dart:async';
@@ -74,7 +75,10 @@ class _QuadPageState extends State<QuadPage> {
     super.initState();
     final start = widget.start;
     if (start != null) unawaited(_startBox(0, start));
-    WidgetsBinding.instance.addPostFrameCallback((_) => _focusHighlight());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _focusHighlight();
+      _say('Arrows past the edge of a box move to another  -  OK on a picture: Full screen  -  1 to 4 pick a box');
+    });
   }
 
   @override
@@ -251,7 +255,7 @@ class _QuadPageState extends State<QuadPage> {
       unawaited(_leave(const QuadLeave()));
       return;
     }
-    _say('Hold OK on a picture for Full screen  -  1 to 4 pick a box  -  Back with four guides leaves');
+    _say('Arrows past the edge of a box move on  -  OK on a picture: Full screen  -  Back with four guides leaves');
   }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
@@ -261,6 +265,19 @@ class _QuadPageState extends State<QuadPage> {
     if (event is KeyDownEvent && RegExp(r'^[1-4]$').hasMatch(digit)) {
       _setHighlight(int.parse(digit) - 1);
       return KeyEventResult.handled;
+    }
+    // arrows reach here from a picture box, or from a guide box's edge (Up from its bar, Left past All, Right past
+    // Settings): the highlight moves to the box beside or above / below, round the ring
+    if (event is KeyDownEvent || event is KeyRepeatEvent) {
+      final next = switch (k) {
+        LogicalKeyboardKey.arrowLeft || LogicalKeyboardKey.arrowRight => _highlight ^ 1,
+        LogicalKeyboardKey.arrowUp || LogicalKeyboardKey.arrowDown => _highlight ^ 2,
+        _ => -1,
+      };
+      if (next >= 0) {
+        _setHighlight(next);
+        return KeyEventResult.handled;
+      }
     }
     // the rest is for a picture box (a guide box's keys are the guide's)
     if (!_boxes[_highlight].picture) return KeyEventResult.ignored;
@@ -276,17 +293,7 @@ class _QuadPageState extends State<QuadPage> {
       }
       return KeyEventResult.handled;
     }
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) return KeyEventResult.ignored;
-    final move = switch (k) {
-      LogicalKeyboardKey.arrowLeft => _highlight.isOdd ? -1 : 0,
-      LogicalKeyboardKey.arrowRight => _highlight.isEven ? 1 : 0,
-      LogicalKeyboardKey.arrowUp => _highlight >= 2 ? -2 : 0,
-      LogicalKeyboardKey.arrowDown => _highlight <= 1 ? 2 : 0,
-      _ => null,
-    };
-    if (move == null) return KeyEventResult.ignored;
-    if (move != 0) _setHighlight(_highlight + move);
-    return KeyEventResult.handled;
+    return KeyEventResult.ignored;
   }
 
   @override
@@ -402,6 +409,7 @@ class _QuadPageState extends State<QuadPage> {
           category: 0,
           playing: null,
           active: on,
+          inBox: true,
           video: const SizedBox.shrink(),
           onPlay: (ch, _) => unawaited(_startBox(i, ch)),
           onClose: _onBack,

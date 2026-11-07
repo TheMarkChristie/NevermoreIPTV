@@ -64,6 +64,10 @@ class _WatchPageState extends State<WatchPage> {
   /// 4 was pressed: OK within a few seconds opens the four screens (0.8.0).
   DateTime? _quadArmed;
 
+  /// OK is down; its first repeat makes it a hold, which opens the four screens (0.8.1: a way in without a 4 key).
+  bool _okDown = false;
+  bool _okLong = false;
+
   bool _info = false;
   Timer? _infoTimer;
   StreamFacts? _facts;
@@ -543,13 +547,35 @@ class _WatchPageState extends State<WatchPage> {
   // ---- keys ----
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) return KeyEventResult.ignored;
     if (_guideOpen) return KeyEventResult.ignored;
     final k = event.logicalKey;
+    // OK: a short press opens the guide on the way up; a held one (its first repeat) the four screens
+    if (k == LogicalKeyboardKey.select ||
+        k == LogicalKeyboardKey.enter ||
+        k == LogicalKeyboardKey.numpadEnter ||
+        k == LogicalKeyboardKey.gameButtonA) {
+      if (event is KeyDownEvent) {
+        _okDown = true;
+        _okLong = false;
+      } else if (event is KeyRepeatEvent) {
+        if (_okDown && !_okLong) {
+          _okLong = true;
+          _quadArmed = null;
+          unawaited(_openQuad());
+        }
+      } else if (event is KeyUpEvent) {
+        final short = _okDown && !_okLong;
+        _okDown = false;
+        _okLong = false;
+        if (short) _okPressed();
+      }
+      return KeyEventResult.handled;
+    }
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) return KeyEventResult.ignored;
     // 4, then OK: the four screens
     if (event is KeyDownEvent && (event.character ?? k.keyLabel.replaceFirst('Numpad ', '')) == '4') {
       _quadArmed = DateTime.now();
-      _showNotice('4: now OK for the four screens');
+      _showNotice('4: now OK for the four screens (or hold OK any time)');
       return KeyEventResult.handled;
     }
     if (k == LogicalKeyboardKey.arrowUp ||
@@ -566,23 +592,22 @@ class _WatchPageState extends State<WatchPage> {
       _step(1);
       return KeyEventResult.handled;
     }
-    if (event is KeyDownEvent &&
-        (k == LogicalKeyboardKey.select ||
-            k == LogicalKeyboardKey.enter ||
-            k == LogicalKeyboardKey.numpadEnter ||
-            k == LogicalKeyboardKey.gameButtonA ||
-            k == LogicalKeyboardKey.guide ||
-            k == LogicalKeyboardKey.info)) {
-      final armed = _quadArmed;
-      _quadArmed = null;
-      if (armed != null && DateTime.now().difference(armed) < const Duration(seconds: 6)) {
-        unawaited(_openQuad());
-      } else {
-        _openGuide();
-      }
+    if (event is KeyDownEvent && (k == LogicalKeyboardKey.guide || k == LogicalKeyboardKey.info)) {
+      _okPressed();
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
+  }
+
+  /// A short OK (or the Guide key): the guide, or the four screens when 4 was pressed just before.
+  void _okPressed() {
+    final armed = _quadArmed;
+    _quadArmed = null;
+    if (armed != null && DateTime.now().difference(armed) < const Duration(seconds: 6)) {
+      unawaited(_openQuad());
+    } else {
+      _openGuide();
+    }
   }
 
   void _onBack() {
@@ -746,6 +771,7 @@ class _WatchPageState extends State<WatchPage> {
                   onSettings: () => unawaited(_openSettings()),
                   onManage: (ch) => unawaited(_openManage(ch)),
                   onOpenSite: (ch) => unawaited(_openSite(ch, fromStart: true)),
+                  onQuad: () => unawaited(_openQuad()),
                 ),
               if (_notice != null)
                 Positioned(

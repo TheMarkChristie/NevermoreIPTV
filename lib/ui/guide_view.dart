@@ -42,6 +42,8 @@ class GuideView extends StatefulWidget {
     required this.onManage,
     required this.onOpenSite,
     this.active = true,
+    this.onQuad,
+    this.inBox = false,
   });
 
   final List<Category> categories;
@@ -63,6 +65,14 @@ class GuideView extends StatefulWidget {
 
   /// Whether this guide has the keys: of the four screens' guides (quad_page.dart) only the highlighted box's does.
   final bool active;
+
+  /// The bar's Four screens item, when the guide offers it (not inside a box). Mark, 7 Nov 2026: "Not many remotes
+  /// have numbers on them" - the way in without a 4 key.
+  final VoidCallback? onQuad;
+
+  /// Inside one of the four screens' boxes: Up from the bar, Left past All and Right past Settings are not taken, so
+  /// the box's page can move the highlight on (a remote without numbers reaches the other boxes that way).
+  final bool inBox;
 
   @override
   State<GuideView> createState() => _GuideViewState();
@@ -92,11 +102,14 @@ class _GuideViewState extends State<GuideView> {
 
   double get _labelWidth => _upright ? 150.0 : 230.0;
 
-  int get _searchIndex => widget.categories.length + 1;
+  /// The Four screens item, after the categories; -1 without one.
+  int get _quadIndex => widget.onQuad == null ? -1 : widget.categories.length + 1;
+  int get _extra => widget.onQuad == null ? 0 : 1;
+  int get _searchIndex => widget.categories.length + 1 + _extra;
 
-  int get _vpnIndex => widget.categories.length + 2;
+  int get _vpnIndex => widget.categories.length + 2 + _extra;
 
-  int get _settingsIndex => widget.categories.length + 3;
+  int get _settingsIndex => widget.categories.length + 3 + _extra;
 
   List<PlayableChannel> get _channels => _category == 0 ? widget.all : widget.categories[_category - 1].channels;
 
@@ -261,6 +274,8 @@ class _GuideViewState extends State<GuideView> {
     if (_onBar) {
       if (k == LogicalKeyboardKey.arrowLeft || k == LogicalKeyboardKey.arrowRight) {
         final next = (_barIndex + (k == LogicalKeyboardKey.arrowLeft ? -1 : 1)).clamp(0, _settingsIndex);
+        // in a box, the bar's ends are the box's edges: the key goes on to the page
+        if (widget.inBox && next == _barIndex) return KeyEventResult.ignored;
         setState(() => _barIndex = next);
         if (next <= widget.categories.length) _setCategory(next);
         _scrollBar();
@@ -270,7 +285,8 @@ class _GuideViewState extends State<GuideView> {
         setState(() => _onBar = false);
         return KeyEventResult.handled;
       }
-      return k == LogicalKeyboardKey.arrowUp ? KeyEventResult.handled : KeyEventResult.ignored;
+      // Up from the bar: the top of the guide; in a box it goes on to the page (the box above)
+      return k == LogicalKeyboardKey.arrowUp && !widget.inBox ? KeyEventResult.handled : KeyEventResult.ignored;
     }
     if (k == LogicalKeyboardKey.arrowUp) {
       // a held Up only scrolls; the third of three quick presses goes back to the channel it started from (so Down
@@ -315,6 +331,8 @@ class _GuideViewState extends State<GuideView> {
     if (_onBar) {
       if (_barIndex == _settingsIndex) {
         widget.onSettings();
+      } else if (_barIndex == _quadIndex) {
+        widget.onQuad!();
       } else if (_barIndex == _searchIndex) {
         unawaited(_search());
       } else if (_barIndex == _vpnIndex) {
@@ -520,7 +538,9 @@ class _GuideViewState extends State<GuideView> {
 
   Widget _detailsPanel(TextTheme text, {int descLines = 3}) {
     if (_onBar) {
-      final hint = _barIndex == _searchIndex
+      final hint = _barIndex == _quadIndex
+          ? 'OK: the four screens - this channel in one, the guide in three.'
+          : _barIndex == _searchIndex
           ? 'OK: search the guide for a show.'
           : _barIndex == _vpnIndex
           ? (vpn.error ?? (vpn.settings == null ? 'OK: add a WireGuard file.' : 'OK: turn the VPN on or off.'))
@@ -591,7 +611,14 @@ class _GuideViewState extends State<GuideView> {
   }
 
   Widget _categoryBar(TextTheme text) {
-    final names = ['All', for (final c in widget.categories) c.name, 'Search', vpn.label, 'Settings'];
+    final names = [
+      'All',
+      for (final c in widget.categories) c.name,
+      if (widget.onQuad != null) 'Four screens',
+      'Search',
+      vpn.label,
+      'Settings',
+    ];
     // every button built (a few dozen at most), so the one showing can always be scrolled to; a builder left the far
     // ones unbuilt and unreachable (review, 24 Oct 2026)
     return ListView(
@@ -610,6 +637,8 @@ class _GuideViewState extends State<GuideView> {
       child: GestureDetector(
         onTap: () => i == _settingsIndex
             ? widget.onSettings()
+            : i == _quadIndex
+            ? widget.onQuad!()
             : i == _searchIndex
             ? unawaited(_search())
             : i == _vpnIndex
@@ -625,9 +654,11 @@ class _GuideViewState extends State<GuideView> {
           ),
           child: Row(
             children: [
-              if (i >= _searchIndex) ...[
+              if (i > widget.categories.length) ...[
                 Icon(
-                  i == _searchIndex
+                  i == _quadIndex
+                      ? Icons.grid_view
+                      : i == _searchIndex
                       ? Icons.search
                       : i == _vpnIndex
                       ? (vpn.state == VpnState.on ? Icons.vpn_lock : Icons.vpn_key_off_outlined)

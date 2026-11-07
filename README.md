@@ -35,7 +35,7 @@ to the debug key. `tools\release.ps1 -Version X -Publish` builds the APK and pub
 
 ## Four screens
 
-While watching, press 4 then OK: the channel you were on in one box and the guide in the other three. 1 to 4 pick a box (its sound comes on); in a guide box, OK plays a channel there; on a picture box, OK offers Full screen or Guide here, and Back puts the guide back. Back with four guides leaves.
+While watching, hold OK (or press 4 then OK, or pick Four screens on the guide's bar): the channel you were on in one box and the guide in the other three. 1 to 4 pick a box (its sound comes on); without number keys, the arrows past a guide box's edge (Up from its bar, Left past All, Right past Settings) move to another box. In a guide box, OK plays a channel there; on a picture box, OK offers Full screen or Guide here, and Back puts the guide back. Back with four guides leaves.
 
 ## From a phone
 
