@@ -61,3 +61,15 @@ List<Channel> copiesAfter(Catalog catalog, Channel ch, Channel failed) {
   if (at < 0) at = 0;
   return [for (var i = 1; i < sorted.length; i++) sorted[(at + i) % sorted.length]];
 }
+
+/// The copy for a small picture (the four screens, 0.8.0: four streams at once are heavy, and the box is a quarter of
+/// the screen): the SD copy when there is one, else HD, else FHD, else the channel itself (HEVC and 4K are left for
+/// the full screen).
+Channel smallerCopy(Catalog catalog, Channel ch) {
+  final all = [ch, ...copiesOf(catalog, ch)];
+  for (final want in const [4, 3, 2]) {
+    final found = all.where((c) => qualityRank(c.name) == want).firstOrNull;
+    if (found != null) return found;
+  }
+  return ch;
+}

@@ -41,6 +41,7 @@ class GuideView extends StatefulWidget {
     required this.onSettings,
     required this.onManage,
     required this.onOpenSite,
+    this.active = true,
   });
 
   final List<Category> categories;
@@ -59,6 +60,9 @@ class GuideView extends StatefulWidget {
 
   /// A Web site opened from its start (a held OK on it), rather than where it was left.
   final void Function(PlayableChannel site) onOpenSite;
+
+  /// Whether this guide has the keys: of the four screens' guides (quad_page.dart) only the highlighted box's does.
+  final bool active;
 
   @override
   State<GuideView> createState() => _GuideViewState();
@@ -109,7 +113,7 @@ class _GuideViewState extends State<GuideView> {
       if (mounted) setState(() {});
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _focus.requestFocus();
+      if (widget.active) _focus.requestFocus();
       _scrollToRow();
     });
     _scrollBar();
@@ -118,6 +122,12 @@ class _GuideViewState extends State<GuideView> {
   @override
   void didUpdateWidget(GuideView old) {
     super.didUpdateWidget(old);
+    // after the frame: the Focus widget below only learns it may take the focus when it rebuilds
+    if (widget.active && !old.active) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && widget.active) _focus.requestFocus();
+      });
+    }
     // new lists or a new guide: keep the cursor on the same channel and moment
     if (old.categories != widget.categories || old.all != widget.all) {
       // the focused channel from the OLD lists (the new ones can be shorter than the cursor row), and the open
@@ -471,6 +481,7 @@ class _GuideViewState extends State<GuideView> {
     final preview = ColoredBox(color: Colors.black, child: widget.video);
     return Focus(
       focusNode: _focus,
+      canRequestFocus: widget.active,
       onKeyEvent: _onKey,
       child: Container(
         color: tvBackground,

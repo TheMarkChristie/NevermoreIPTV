@@ -25,6 +25,7 @@ import '../core/vpn.dart';
 import '../core/web.dart';
 import 'guide_view.dart';
 import 'manage_channels_page.dart';
+import 'quad_page.dart';
 import 'settings_page.dart';
 import 'tv.dart';
 import 'web_page.dart';
@@ -59,6 +60,9 @@ class _WatchPageState extends State<WatchPage> {
   /// The category up / down moves through; null: All.
   String? _zapCategory;
   bool _guideOpen = false;
+
+  /// 4 was pressed: OK within a few seconds opens the four screens (0.8.0).
+  DateTime? _quadArmed;
 
   bool _info = false;
   Timer? _infoTimer;
@@ -497,6 +501,42 @@ class _WatchPageState extends State<WatchPage> {
 
   Future<void> _openSettings() => _leaveFor(const SettingsPage());
 
+  /// The four screens (0.8.0): the channel playing in one box, the guide in the other three; on return the box's
+  /// channel chosen for the full screen plays, else the one from before.
+  Future<void> _openQuad() async {
+    if (_away) return;
+    final before = _current;
+    _token++;
+    _away = true;
+    _zapTimer?.cancel();
+    await _stopPlayer();
+    if (!mounted) return;
+    setState(() => _guideOpen = false);
+    final left = await Navigator.of(context).push<QuadLeave>(
+      MaterialPageRoute(
+        builder: (_) => QuadPage(categories: _guideCategories, all: _all, start: before),
+      ),
+    );
+    _away = false;
+    if (!mounted) return;
+    _videoFocus.requestFocus();
+    if (left?.settings == true) {
+      await _openSettings();
+      return;
+    }
+    if (left?.manage != null) {
+      await _openManage(left!.manage!);
+      return;
+    }
+    if (left?.site != null) {
+      await _openSite(left!.site!);
+      return;
+    }
+    final ch = left?.channel ?? before;
+    final still = ch == null ? null : _all.where((c) => c.uid == ch.uid).firstOrNull;
+    if (still != null) await _play(still);
+  }
+
   Future<void> _openManage(PlayableChannel ch) =>
       _leaveFor(ManageChannelsPage(sourceId: ch.source.id, groupId: ch.channel.group));
 
@@ -506,6 +546,12 @@ class _WatchPageState extends State<WatchPage> {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) return KeyEventResult.ignored;
     if (_guideOpen) return KeyEventResult.ignored;
     final k = event.logicalKey;
+    // 4, then OK: the four screens
+    if (event is KeyDownEvent && (event.character ?? k.keyLabel.replaceFirst('Numpad ', '')) == '4') {
+      _quadArmed = DateTime.now();
+      _showNotice('4: now OK for the four screens');
+      return KeyEventResult.handled;
+    }
     if (k == LogicalKeyboardKey.arrowUp ||
         k == LogicalKeyboardKey.channelUp ||
         k == LogicalKeyboardKey.pageUp ||
@@ -527,7 +573,13 @@ class _WatchPageState extends State<WatchPage> {
             k == LogicalKeyboardKey.gameButtonA ||
             k == LogicalKeyboardKey.guide ||
             k == LogicalKeyboardKey.info)) {
-      _openGuide();
+      final armed = _quadArmed;
+      _quadArmed = null;
+      if (armed != null && DateTime.now().difference(armed) < const Duration(seconds: 6)) {
+        unawaited(_openQuad());
+      } else {
+        _openGuide();
+      }
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;

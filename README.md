@@ -33,6 +33,10 @@ Flutter 3.47 and the Android SDK 36; Java 17.
 Release builds are signed with the key named in `android/key.properties` (not in the repo); without it they fall back
 to the debug key. `tools\release.ps1 -Version X -Publish` builds the APK and publishes it as the GitHub release `vX`.
 
+## Four screens
+
+While watching, press 4 then OK: the channel you were on in one box and the guide in the other three. 1 to 4 pick a box (its sound comes on); in a guide box, OK plays a channel there; on a picture box, OK offers Full screen or Guide here, and Back puts the guide back. Back with four guides leaves.
+
 ## From a phone
 
 In the browser, hold OK for "From your phone": a page on your phone (scan the code) types into the TV's page or fills a site's sign-in form, which the TV keeps and fills in again next time. Settings > Phone serves this TV's picks as a file to download, and takes a picks file to make the TV a copy of another; `tools\install.ps1 -Backup <file>` and `-Restore <file>` do the same from a PC.
