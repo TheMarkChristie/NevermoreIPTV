@@ -29,5 +29,10 @@ left out), used through `dependency_overrides` in the app's `pubspec.yaml`. Five
    (`setForceLowestBitrate`), for the app's four screens, where four pictures play at a quarter of the screen each.
    Reached the same way as patch 4.
 
-When the plug-in is updated: copy the new version over this folder (keeping this file), apply the five changes again,
+6. `VideoPlayerPlugin.java`, `releaseAll()` (7 Nov 2026): every player disposed at once (`disposeAllPlayers`), for
+   the app's MainActivity as it closes on Home or standby - a provider counts a stream until its connection closes,
+   so the players are released before the activity finishes rather than when the process is ended. Reached the same
+   way as patch 4.
+
+When the plug-in is updated: copy the new version over this folder (keeping this file), apply the six changes again,
 and check that `flutter pub get` still resolves the override. The first three are worth sending upstream.

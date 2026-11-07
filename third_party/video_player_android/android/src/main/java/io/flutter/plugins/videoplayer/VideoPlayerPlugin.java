@@ -195,6 +195,21 @@ public class VideoPlayerPlugin implements FlutterPlugin, AndroidVideoPlayerApi {
     return player != null && player.setLowestBitrate(on);
   }
 
+  /**
+   * Nevermore IPTV (patch 6): every player released now, for the app closing (7 Nov 2026: a provider counts a
+   * stream until its connection closes, so the players go before the activity does, not with the process). How
+   * many there were.
+   */
+  public static int releaseAll() {
+    VideoPlayerPlugin plugin = attached;
+    if (plugin == null) {
+      return 0;
+    }
+    int count = plugin.videoPlayers.size();
+    plugin.disposeAllPlayers();
+    return count;
+  }
+
   @NonNull
   private VideoPlayer getPlayer(long playerId) {
     VideoPlayer player = videoPlayers.get(playerId);

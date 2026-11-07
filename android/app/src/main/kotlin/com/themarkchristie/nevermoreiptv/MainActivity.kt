@@ -8,8 +8,10 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
+import android.util.Log
 import android.view.WindowManager
 import android.webkit.CookieManager
+import android.webkit.WebView
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -17,6 +19,7 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugins.videoplayer.VideoPlayerPlugin
 import io.flutter.plugins.webviewflutter.WebViewFlutterAndroidExternalApi
 import java.io.File
+import java.lang.ref.WeakReference
 
 private const val VPN_REQUEST = 4711
 
@@ -28,6 +31,9 @@ class MainActivity : FlutterActivity() {
     /** Who wants the screen kept on (the player, the browser, a page waiting for the viewer); on while anyone does. */
     private val awake = HashSet<String>()
     private var webUsed = false
+
+    /** The pages the app opened (the browser, a box of the four screens), to blank as the app closes. */
+    private val webViews = ArrayList<WeakReference<WebView>>()
 
     /** The next stop is Android's installer or its "allow installs" page over the app: the app waits behind them. */
     private var keepAliveOnce = false
@@ -51,6 +57,9 @@ class MainActivity : FlutterActivity() {
      * Leaving the app closes it (Mark, 24 Oct 2026: "can we make the app fully close down then its shuts so its a fresh
      * restart"): Home, Back twice or the TV going to standby ends the screen and then the process, so the next start is a
      * cold one on the last channel. A dialog over the app (Android's VPN question) only pauses it, so it does not count.
+     * The streams end here, before the screen goes (Mark, 7 Nov 2026: "make sure when the app closes it disconnects
+     * the streams"): every player is released and every page blanked, so the provider and a club's site see the
+     * connections close now, not when Android ends the process.
      */
     override fun onStop() {
         super.onStop()
@@ -67,6 +76,20 @@ class MainActivity : FlutterActivity() {
                 // no WebView on this TV
             }
         }
+        val released = VideoPlayerPlugin.releaseAll()
+        var blanked = 0
+        for (ref in webViews) {
+            val web = ref.get() ?: continue
+            try {
+                web.stopLoading()
+                web.loadUrl("about:blank")
+                blanked++
+            } catch (_: Exception) {
+                // a page already gone
+            }
+        }
+        webViews.clear()
+        Log.i("Nevermore", "closing: $released player(s) released, $blanked page(s) blanked")
         finishAndRemoveTask()
     }
 
@@ -161,6 +184,7 @@ class MainActivity : FlutterActivity() {
                     @Suppress("DEPRECATION")
                     val web = WebViewFlutterAndroidExternalApi.getWebView(flutterEngine, (call.arguments as Number).toLong())
                     web?.settings?.javaScriptCanOpenWindowsAutomatically = false
+                    if (web != null) webViews.add(WeakReference(web))
                     result.success(web != null)
                 }
                 else -> result.notImplemented()
