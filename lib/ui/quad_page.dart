@@ -22,6 +22,13 @@
 /// is handed to box one as it is, never reconnected; before a provider box starts, the account is asked afresh and
 /// the box stays on the guide when the boxes here or the provider's own count would pass the limit; a stream the
 /// provider cuts says so in its box, with Play again in the menu. "Box N" at the top when the highlight moves.
+/// Sites in boxes (0.9.0; Mark, 7 Nov 2026: "Does it also allow me the web streams as well" - yes, multi site): OK
+/// on a site in a guide box's Web category opens it in that box, in a WebView of its own (as many boxes as he likes),
+/// with the pointer (web_page.dart SiteSession / SiteView); Back gives the keys to the boxes again (a page back
+/// first, when there is one), OK on the box brings the pointer back, a held OK (or a tap on the name) opens the
+/// menu: the pointer, Full screen (the browser, at the page it is on), From your phone, Guide here. The sound
+/// follows the highlight as a stream's does: a box without it has the page's video and audio muted. No stream limit
+/// applies to a site.
 library;
 
 import 'dart:async';
@@ -35,8 +42,10 @@ import '../core/library.dart';
 import '../core/model.dart';
 import '../core/player_state.dart';
 import '../core/stream_facts.dart';
+import '../core/web.dart';
 import 'guide_view.dart';
 import 'tv.dart';
+import 'web_page.dart';
 
 /// How the four screens were left: the channel for the full screen (null: the one from before), or a page to open.
 class QuadLeave {
@@ -85,7 +94,15 @@ class _Box {
   /// Watches the stream for its end (the provider cutting it).
   VoidCallback? listener;
 
-  bool get picture => channel != null;
+  /// A site in the box (0.9.0): its session; [channel] is then the site's entry in the Web category.
+  SiteSession? site;
+
+  /// The site's pointer has the keys (else the arrows move between the boxes and OK brings the pointer back).
+  bool browsing = false;
+
+  bool get guide => channel == null;
+  bool get isSite => site != null;
+  bool get picture => channel != null && site == null;
 }
 
 class _QuadPageState extends State<QuadPage> {
@@ -93,6 +110,7 @@ class _QuadPageState extends State<QuadPage> {
   int _highlight = 0;
   final _keys = FocusNode(debugLabel: 'quad');
   bool _selectHeld = false;
+  bool _longDone = false;
   String? _note;
   Timer? _noteTimer;
 
@@ -126,6 +144,8 @@ class _QuadPageState extends State<QuadPage> {
       box.token++;
       unawaited(box.player?.dispose());
       box.player = null;
+      box.site?.dispose();
+      box.site = null;
     }
     _keys.dispose();
     super.dispose();
@@ -140,24 +160,37 @@ class _QuadPageState extends State<QuadPage> {
     });
   }
 
-  /// The highlighted box has the keys: a picture box through this page's node, a guide box through its guide.
+  /// The highlighted box has the keys: a picture box (or a site box without the pointer) through this page's node,
+  /// a guide box through its guide, a browsed site box through its pointer.
   void _focusHighlight() {
     if (!mounted) return;
-    if (!_boxes[_highlight].picture) return;
+    final box = _boxes[_highlight];
+    if (box.guide || (box.isSite && box.browsing)) return;
     _keys.requestFocus();
   }
 
   void _setHighlight(int i) {
     if (i < 0 || i > 3) return;
     if (i != _highlight) _say('Box ${i + 1}', seconds: 2);
-    setState(() => _highlight = i);
+    setState(() {
+      _highlight = i;
+      // a site box left behind gives its pointer up, so the arrows pass through it next time
+      for (final (j, box) in _boxes.indexed) {
+        if (j != i && box.isSite) box.browsing = false;
+      }
+    });
     for (final (j, box) in _boxes.indexed) {
       unawaited(box.player?.setVolume(j == i ? 1 : 0).catchError((_) {}));
+      unawaited(box.site?.setMuted(j != i));
     }
     WidgetsBinding.instance.addPostFrameCallback((_) => _focusHighlight());
   }
 
   Future<void> _stopBox(_Box box) async {
+    final site = box.site;
+    box.site = null;
+    box.browsing = false;
+    site?.dispose();
     final p = box.player;
     box.player = null;
     if (p != null) {
@@ -279,6 +312,57 @@ class _QuadPageState extends State<QuadPage> {
     }
   }
 
+  /// The site [ch] in box [i] (0.9.0), at the page it was left on, with the pointer; the sound follows the
+  /// highlight as a stream's does. No stream limit applies: the page is the club's own player, not the provider's.
+  Future<void> _startSite(int i, PlayableChannel ch, {bool fromStart = false}) async {
+    final box = _boxes[i];
+    box.token++;
+    await _stopBox(box);
+    if (!mounted) return;
+    final url = ch.channel.url ?? '';
+    final session = SiteSession(name: ch.name, site: url, url: fromStart ? url : library.sitePages[url] ?? url);
+    setState(() {
+      box.channel = ch;
+      box.copy = null;
+      box.starting = false;
+      box.problem = null;
+      box.site = session;
+      box.browsing = true;
+    });
+    if (_highlight != i) _setHighlight(i);
+    _say('The pointer is in the box  -  Back: the boxes again  -  hold OK: the box menu', seconds: 6);
+  }
+
+  /// The site box's pointer takes the keys.
+  void _browse(int i) {
+    setState(() => _boxes[i].browsing = true);
+  }
+
+  /// The keys are the boxes' again; the site plays on.
+  void _stopBrowsing(int i) {
+    setState(() => _boxes[i].browsing = false);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _focusHighlight());
+    _say('The boxes  -  OK: the pointer again', seconds: 3);
+  }
+
+  /// Back in a browsed site box: ends typing, else goes back a page, else (or a second Back within two seconds)
+  /// gives the keys to the boxes again.
+  Future<void> _siteBack(int i, _Box box) async {
+    final session = box.site;
+    if (session == null) return;
+    if (session.typing.value) {
+      session.typing.value = false;
+      return;
+    }
+    final r = await session.back(forGood: false);
+    if (!mounted || box.site != session) return;
+    if (r == SiteBack.page) {
+      _say('Back again: the boxes', seconds: 2);
+      return;
+    }
+    _stopBrowsing(i);
+  }
+
   /// Box [i] shows the guide again.
   Future<void> _guideBack(int i) async {
     final box = _boxes[i];
@@ -301,41 +385,35 @@ class _QuadPageState extends State<QuadPage> {
     if (mounted) Navigator.of(context).pop(how);
   }
 
-  /// A picture box's choices.
+  /// A picture box's choices, or a site box's: the pointer, Full screen (the browser, at the page it is on), From
+  /// your phone, Guide here.
   Future<void> _boxMenu(int i) async {
     final box = _boxes[i];
     final ch = box.channel;
     if (ch == null) return;
+    final site = box.site;
+    final choices = <(String, VoidCallback)>[
+      if (site == null && box.problem != null) ('Play again', () => unawaited(_startBox(i, ch))),
+      if (site != null && !box.browsing) ('The pointer', () => _browse(i)),
+      ('Full screen', () => unawaited(_leave(site == null ? QuadLeave(channel: ch) : QuadLeave(site: ch)))),
+      if (site != null) ('From your phone', () => unawaited(phoneDialog(context, site).then((_) => _focusHighlight()))),
+      ('Guide here', () => unawaited(_guideBack(i))),
+    ];
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: tvSurface,
         title: Text(ch.name),
         actions: [
-          if (box.problem != null)
+          for (final (n, (label, act)) in choices.indexed)
             TvButton(
-              label: 'Play again',
-              autofocus: true,
+              label: label,
+              autofocus: n == 0,
               onPressed: () {
                 Navigator.of(context).pop();
-                unawaited(_startBox(i, ch));
+                act();
               },
             ),
-          TvButton(
-            label: 'Full screen',
-            autofocus: box.problem == null,
-            onPressed: () {
-              Navigator.of(context).pop();
-              unawaited(_leave(QuadLeave(channel: ch)));
-            },
-          ),
-          TvButton(
-            label: 'Guide here',
-            onPressed: () {
-              Navigator.of(context).pop();
-              unawaited(_guideBack(i));
-            },
-          ),
           TvButton(label: 'Close', onPressed: () => Navigator.of(context).pop()),
         ],
       ),
@@ -345,11 +423,15 @@ class _QuadPageState extends State<QuadPage> {
 
   void _onBack() {
     final box = _boxes[_highlight];
-    if (box.picture) {
+    if (box.isSite && box.browsing) {
+      unawaited(_siteBack(_highlight, box));
+      return;
+    }
+    if (!box.guide) {
       unawaited(_guideBack(_highlight));
       return;
     }
-    if (_boxes.every((b) => !b.picture)) {
+    if (_boxes.every((b) => b.guide)) {
       unawaited(_leave(const QuadLeave()));
       return;
     }
@@ -377,17 +459,29 @@ class _QuadPageState extends State<QuadPage> {
         return KeyEventResult.handled;
       }
     }
-    // the rest is for a picture box (a guide box's keys are the guide's)
-    if (!_boxes[_highlight].picture) return KeyEventResult.ignored;
+    // the rest is for a picture box, or a site box without the pointer (a guide box's keys are the guide's, a
+    // browsed site's are its pointer's)
+    final box = _boxes[_highlight];
+    if (box.guide || (box.isSite && box.browsing)) return KeyEventResult.ignored;
     final select =
         k == LogicalKeyboardKey.select || k == LogicalKeyboardKey.enter || k == LogicalKeyboardKey.gameButtonA;
     if (select) {
-      // the menu on the way up, so a held OK (its repeats) opens it once, as a short OK does
+      // on the way up, so a held OK (its repeats) acts once, as a short OK does: the menu on a picture box; on a
+      // site box a short OK brings the pointer and a held OK the menu
       if (event is KeyDownEvent) {
         _selectHeld = true;
+        _longDone = false;
+      } else if (event is KeyRepeatEvent && _selectHeld) {
+        _longDone = true;
       } else if (event is KeyUpEvent && _selectHeld) {
+        final held = _longDone;
         _selectHeld = false;
-        unawaited(_boxMenu(_highlight));
+        _longDone = false;
+        if (box.isSite && !held) {
+          _browse(_highlight);
+        } else {
+          unawaited(_boxMenu(_highlight));
+        }
       }
       return KeyEventResult.handled;
     }
@@ -496,7 +590,11 @@ class _QuadPageState extends State<QuadPage> {
         onTap: () {
           if (!on) _setHighlight(i);
         },
-        child: box.picture ? _picture(text, i, box, on) : _guide(i, on),
+        child: box.guide
+            ? _guide(i, on)
+            : box.isSite
+            ? _site(text, i, box, on)
+            : _picture(text, i, box, on),
       ),
     );
   }
@@ -521,11 +619,46 @@ class _QuadPageState extends State<QuadPage> {
       active: on,
       inBox: true,
       video: const SizedBox.shrink(),
-      onPlay: (ch, _) => unawaited(_startBox(i, ch)),
+      // a Web entry is a site for the box (as the watch page tells them apart), a held OK opens it from the start
+      onPlay: (ch, _) => unawaited(isWeb(ch) ? _startSite(i, ch) : _startBox(i, ch)),
       onClose: _onBack,
       onSettings: () => unawaited(_leave(const QuadLeave(settings: true))),
       onManage: (ch) => unawaited(_leave(QuadLeave(manage: ch))),
-      onOpenSite: (ch) => unawaited(_leave(QuadLeave(site: ch))),
+      onOpenSite: (ch) => unawaited(_startSite(i, ch, fromStart: true)),
+    );
+  }
+
+  /// A site in its box (0.9.0): the page laid out at the box's size (it sees a small screen, as a phone's), the
+  /// pointer over it while the box is browsed. The name badge opens the box's menu by touch (a tap on the page is
+  /// the page's own).
+  Widget _site(TextTheme text, int i, _Box box, bool on) {
+    final ch = box.channel!;
+    final session = box.site!;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        SiteView(
+          session: session,
+          active: on && box.browsing,
+          boxed: true,
+          onLeave: () => _stopBrowsing(i),
+          onPageBack: () => _say('Back again: the boxes', seconds: 2),
+          onHold: () => unawaited(_boxMenu(i)),
+        ),
+        if (on)
+          Positioned(
+            left: 10,
+            bottom: 10,
+            child: GestureDetector(
+              onTap: () => unawaited(_boxMenu(i)),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(color: tvBackground.withAlpha(215), borderRadius: BorderRadius.circular(8)),
+                child: Text(box.browsing ? ch.name : '${ch.name}  -  OK: the pointer', style: text.bodySmall),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
