@@ -16,6 +16,7 @@ import 'package:video_player/video_player.dart';
 import '../core/copies.dart';
 import '../core/library.dart';
 import '../core/model.dart';
+import '../core/myteams_server.dart';
 import '../core/player_state.dart';
 import '../core/show_search.dart';
 import '../core/stream_facts.dart';
@@ -114,7 +115,9 @@ class _WatchPageState extends State<WatchPage> {
 
   /// The Web category at once, with the icons found on earlier starts; icons still missing arrive in the background.
   Future<void> _loadWeb() async {
-    final sites = await loadSites();
+    // My Teams first when this copy carries it: the house's hosted copy, else the app's own (myteams_server.dart)
+    final teams = await myTeamsAddress();
+    final sites = [if (teams != null) WebSite(myTeamsName, teams), ...await loadSites()];
     if (sites.isEmpty || !mounted) return;
     setState(() {
       _web = webCategory(sites, library.siteIcons);

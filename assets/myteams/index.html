@@ -1,0 +1,1639 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- YouTube's player will not play without a referrer; Home Assistant sends Referrer-Policy: no-referrer on its pages -->
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>My Teams TV</title>
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap">
+<style>
+/* Proximo 3 tokens (Z:\Personal\ClaudeDesignSystems\proximo3\tokens.css), dark broadcast use */
+:root {
+  --p3-red: #ee163b;
+  --p3-red-deep: #c50f2f;
+  --p3-pink-mid: #f47389;
+  --p3-pink-light: #f8a1b1;
+  --p3-charcoal: #2d2e35;
+  --p3-ink: #3c3c3c;
+  --p3-white: #ffffff;
+  --p3-grey-100: #f1f3f2;
+  --p3-grey-200: #e6e6e6;
+  --p3-grey-300: #d2d2d2;
+  --p3-grey-500: #727272;
+  --p3-night: #1f2026;
+  --p3-night-2: #25262c;
+  --p3-line: #45464e;
+  --p3-muted: #b9bac1;
+  --r-box: 18px;
+  --r-mid: 12px;
+  --r-chip: 6px;
+  --font: 'Montserrat', 'Gotham HTF', system-ui, 'Segoe UI', Roboto, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #121317; color: var(--p3-white); overflow: hidden; }
+body { font-family: var(--font); -webkit-font-smoothing: antialiased; }
+
+/* the 1920 x 1080 canvas, scaled to the screen by app.js inside a fixed box that clips it: unclipped, a WebView
+   widens its layout viewport to the unscaled canvas and reports that width (Nevermore's TV WebView said 1680 for 960) */
+#screen { position: fixed; inset: 0; overflow: hidden; }
+#stage {
+  position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; transform: scale(0.0001);
+  background:
+    repeating-linear-gradient(135deg, rgba(255,255,255,0.018) 0 2px, transparent 2px 22px),
+    radial-gradient(1200px 600px at 20% 110%, rgba(238,22,59,0.20), transparent 60%),
+    linear-gradient(180deg, var(--p3-night-2), #17181d);
+  overflow: hidden;
+}
+
+/* ---- the picture ---- */
+#video { position: absolute; left: 24px; top: 24px; width: 1472px; height: 828px; background: #000; overflow: hidden; border-radius: var(--r-box); clip-path: inset(0 round var(--r-box)); }
+#player, #video iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+#slate {
+  position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; padding: 70px 90px;
+  background: linear-gradient(135deg, rgba(31,32,38,0.92), rgba(45,46,53,0.80)), var(--slate-img, none) center / cover no-repeat, var(--p3-night);
+  transition: opacity 0.6s ease;
+}
+#slate.gone { opacity: 0; pointer-events: none; }
+#slate .eyebrow { font-weight: 800; letter-spacing: 0.16em; color: var(--p3-pink-light); font-size: 26px; text-transform: uppercase; }
+#slate .big { font-weight: 800; font-size: 64px; line-height: 1.1; margin: 18px 0 14px; }
+#slate .small { font-size: 28px; color: var(--p3-muted); font-weight: 500; }
+#slate .board { display: grid; grid-template-columns: 1fr 1fr; gap: 0 60px; margin-top: 30px; }
+#slate .board h3 { margin: 0 0 12px; font-size: 24px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--p3-pink-light); }
+#slate .board .row { display: flex; align-items: center; gap: 14px; font-size: 26px; font-weight: 600; padding: 9px 0; border-bottom: 1px solid rgba(255,255,255,0.08); }
+#slate .board .row small { color: var(--p3-muted); font-weight: 500; font-size: 20px; margin-left: auto; white-space: nowrap; }
+#slate .board .row img { width: 34px; height: 34px; object-fit: contain; }
+
+/* ---- one team's page in the side column ---- */
+.team-h { display: flex; align-items: center; gap: 14px; padding: 10px 6px 12px; }
+.team-h img { width: 64px; height: 64px; object-fit: contain; flex: none; }
+.team-h .n { font-size: 25px; font-weight: 800; line-height: 1.1; }
+.team-h .l { font-size: 14px; font-weight: 600; color: var(--p3-muted); margin-top: 4px; }
+.tb { background: rgba(255,255,255,0.055); border-radius: var(--r-mid); padding: 9px 12px 10px; margin-bottom: 9px; }
+.tb h4 { margin: 0 0 5px; font-size: 12px; font-weight: 800; letter-spacing: 0.14em; color: var(--p3-pink-light); text-transform: uppercase; }
+.tb .g { display: flex; align-items: center; gap: 9px; font-size: 18px; font-weight: 700; min-width: 0; }
+.tb .g span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb .g img { width: 24px; height: 24px; object-fit: contain; flex: none; }
+.tb .rk { flex: none; min-width: 30px; text-align: center; font-weight: 900; font-size: 15px; padding: 2px 6px; border-radius: var(--r-chip); background: var(--p3-grey-500); color: #fff; }
+.tb .rk.W { background: #fff; color: var(--p3-charcoal); }
+.tb .rk.L { background: var(--p3-red); }
+.tb .rk.live { background: var(--p3-red); }
+.tb .s { font-size: 14px; font-weight: 600; color: var(--p3-muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb .pos { display: flex; align-items: baseline; gap: 10px; }
+.tb .pos b { font-size: 34px; font-weight: 900; line-height: 1; }
+.tb .pos span { font-size: 15px; font-weight: 600; color: var(--p3-muted); }
+.tb .news { font-size: 17px; font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.tb .none { font-size: 15px; color: var(--p3-muted); font-weight: 500; }
+
+#bug {
+  position: absolute; left: 28px; top: 26px; display: flex; align-items: stretch; height: 54px; border-radius: var(--r-mid); overflow: hidden;
+  font-weight: 800; font-size: 26px; letter-spacing: 0.06em; text-transform: uppercase;
+  box-shadow: 0 10px 26px rgba(0,0,0,0.35); z-index: 3;
+}
+#bug .k { background: var(--p3-red); color: #fff; padding: 0 20px; display: flex; align-items: center; }
+#bug .v { background: rgba(31,32,38,0.88); color: #fff; padding: 0 20px; display: block; line-height: 54px; font-weight: 700; letter-spacing: 0.02em; text-transform: none; max-width: 1000px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#bug .v:empty { display: none; }
+#bug.live .k { animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { background: var(--p3-red-deep); } }
+
+#sound {
+  position: absolute; right: 28px; top: 26px; z-index: 3; background: rgba(31,32,38,0.88); border-left: 6px solid var(--p3-red); border-radius: var(--r-mid);
+  padding: 12px 20px; font-size: 22px; font-weight: 600;
+}
+#sound[hidden] { display: none; }
+
+/* ---- the side column ---- */
+#side {
+  position: absolute; left: 1520px; top: 24px; width: 376px; height: 828px; border-radius: var(--r-box); overflow: hidden;
+  background: linear-gradient(180deg, var(--p3-charcoal) 0%, var(--p3-night) 100%);
+  box-shadow: 0 12px 30px rgba(0,0,0,0.35); display: flex; flex-direction: column;
+}
+#clock { padding: 22px 26px 12px; border-bottom: 1px solid var(--p3-line); }
+#clock .time { font-size: 62px; font-weight: 800; line-height: 1; letter-spacing: -0.01em; }
+#clock .day { font-size: 22px; font-weight: 600; color: var(--p3-muted); margin-top: 8px; }
+#clock .zones { font-size: 17px; font-weight: 700; color: var(--p3-pink-light); margin-top: 6px; letter-spacing: 0.02em; }
+#brand { display: flex; align-items: center; gap: 0; padding: 12px 26px; }
+#brand .chip { display: inline-flex; border-radius: var(--r-chip); overflow: hidden; }
+#brand .mark { background: var(--p3-red); color: #fff; font-weight: 900; font-size: 22px; letter-spacing: 0.08em; padding: 6px 12px; text-transform: uppercase; }
+#brand .tv { background: #fff; color: var(--p3-charcoal); font-weight: 900; font-size: 22px; letter-spacing: 0.08em; padding: 6px 10px; }
+#panel { position: relative; flex: 1; overflow: hidden; }
+#panel .pane { position: absolute; inset: 0; padding: 2px 18px 0; opacity: 0; transform: translateX(24px); transition: opacity 0.5s ease, transform 0.5s ease; }
+#panel .pane.on { opacity: 1; transform: none; }
+#prog { display: flex; align-items: center; gap: 12px; padding: 10px 24px 16px; }
+#prog .bar { flex: 1; height: 6px; border-radius: 3px; background: var(--p3-line); overflow: hidden; }
+#prog .bar i { display: block; height: 100%; width: 0; background: var(--p3-red); border-radius: 3px; }
+#prog span { font-size: 14px; font-weight: 700; color: var(--p3-muted); font-variant-numeric: tabular-nums; min-width: 52px; text-align: right; }
+
+.ph { display: flex; align-items: baseline; justify-content: space-between; font-size: 24px; font-weight: 800; padding: 10px 8px 8px; }
+.ph small { font-size: 15px; font-weight: 600; color: var(--p3-muted); letter-spacing: 0.06em; }
+
+table.lg { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 19px; font-weight: 600; table-layout: fixed; margin-bottom: 8px; }
+table.lg th { font-size: 14px; font-weight: 700; color: var(--p3-muted); text-align: right; padding: 0 6px 3px; letter-spacing: 0.06em; }
+table.lg td { padding: 2px 6px; height: 28px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+table.lg td.n { text-align: right; font-variant-numeric: tabular-nums; }
+table.lg td.pos { color: var(--p3-pink-light); width: 34px; text-align: right; padding-right: 8px; }
+table.lg tr:nth-child(even) td { background: rgba(255,255,255,0.035); }
+table.lg tr.me td { background: var(--p3-red); color: #fff; font-weight: 800; }
+table.lg tr td:first-child { border-radius: var(--r-chip) 0 0 var(--r-chip); }
+table.lg tr td:last-child { border-radius: 0 var(--r-chip) var(--r-chip) 0; }
+table.lg tr.me td.pos { color: #fff; }
+table.lg td.gd.plus { color: #9fe0b0; }
+table.lg td.gd.minus { color: var(--p3-pink-light); }
+table.lg tr.me td.gd { color: #fff; }
+
+.gl { list-style: none; margin: 0; padding: 0; }
+.gl li { padding: 7px 8px 8px; border-bottom: 1px solid rgba(255,255,255,0.07); }
+.gl .meta { font-size: 15px; color: var(--p3-muted); font-weight: 600; letter-spacing: 0.03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px; }
+.gl .meta b { color: var(--p3-pink-light); font-weight: 800; }
+.gl .tm { display: grid; grid-template-columns: 26px 1fr auto; align-items: center; gap: 10px; font-size: 19px; font-weight: 700; height: 29px; }
+.gl .tm span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gl .tm.won span { color: #fff; }
+.gl .tm.lost span { color: #c9cad0; font-weight: 600; }
+.gl .tm b { background: #fff; color: var(--p3-charcoal); font-weight: 900; min-width: 44px; padding: 0 8px; border-radius: var(--r-chip); text-align: center; font-variant-numeric: tabular-nums; }
+.gl .tm b:empty { display: none; }
+.gl .tv, .tb .tv { font-size: 14px; font-weight: 600; color: var(--p3-muted); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gl .tv i, .tb .tv i { font-style: normal; font-weight: 900; font-size: 11px; letter-spacing: 0.08em; background: var(--p3-pink-light); color: var(--p3-charcoal); border-radius: 4px; padding: 1px 5px; margin-right: 7px; position: relative; top: -1px; }
+.gl li.live .tm b { background: var(--p3-red); color: #fff; }
+.gl li.sub { border-bottom: 0; padding: 14px 8px 2px; font-size: 15px; font-weight: 800; letter-spacing: 0.12em; color: var(--p3-pink-light); text-transform: uppercase; }
+.gl img { width: 26px; height: 26px; object-fit: contain; }
+
+/* ---- the lower third ---- */
+#lower { position: absolute; left: 24px; top: 876px; width: 1472px; height: 104px; display: flex; border-radius: var(--r-box); overflow: hidden; box-shadow: 0 12px 30px rgba(0,0,0,0.4); }
+#lower .tab {
+  background: var(--p3-red); color: #fff; font-weight: 800; font-size: 28px; padding: 0 30px; display: flex; align-items: center;
+  white-space: nowrap; max-width: 470px; overflow: hidden; text-overflow: ellipsis;
+}
+#lower .bar { flex: 1; background: #fff; color: var(--p3-charcoal); display: flex; align-items: center; gap: 22px; padding: 0 28px; min-width: 0; }
+#lower .bar img { width: 60px; height: 60px; object-fit: contain; flex: none; }
+#lower .bar img[hidden] { display: none; }
+#lower .txt { min-width: 0; flex: 1; }
+#lower .l1 { font-size: 40px; font-weight: 800; line-height: 1.12; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#lower .l2 { font-size: 23px; font-weight: 600; color: #50515a; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#lower .l1 .sc { background: var(--p3-charcoal); color: #fff; padding: 0 14px; margin: 0 6px; border-radius: var(--r-chip); font-variant-numeric: tabular-nums; }
+
+/* ---- next up ---- */
+#next { position: absolute; left: 1520px; top: 876px; width: 376px; height: 104px; display: flex; background: var(--p3-night); border-radius: var(--r-box); overflow: hidden; box-shadow: 0 12px 30px rgba(0,0,0,0.4); }
+#next .count { width: 104px; flex: none; background: var(--p3-red); display: flex; flex-direction: column; align-items: center; justify-content: center; }
+#next .count b { font-size: 44px; font-weight: 900; line-height: 1; }
+#next .count small { font-size: 15px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin-top: 4px; }
+#next .txt { padding: 12px 16px; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+#next .head { font-size: 14px; font-weight: 800; color: var(--p3-pink-light); letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#next .game { font-size: 19px; font-weight: 800; line-height: 1.2; margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+#next .sub { font-size: 16px; font-weight: 600; color: var(--p3-muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---- the ticker ---- */
+#ticker { position: absolute; left: 24px; top: 996px; width: 1872px; height: 52px; display: flex; background: var(--p3-red); border-radius: var(--r-mid); overflow: hidden; }
+#ticker .label { flex: none; background: var(--p3-charcoal); color: #fff; font-weight: 900; font-size: 22px; letter-spacing: 0.1em; padding: 0 24px; display: flex; align-items: center; text-transform: uppercase; }
+#ticker .track { position: relative; flex: 1; overflow: hidden; }
+#ticker .run { position: absolute; left: 0; top: 0; height: 52px; display: flex; align-items: center; white-space: nowrap; will-change: transform; font-size: 27px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.01em; }
+#ticker .tk b { font-weight: 900; color: var(--p3-charcoal); background: #fff; padding: 2px 10px; border-radius: var(--r-chip); margin-right: 12px; font-size: 21px; letter-spacing: 0.06em; position: relative; top: -2px; }
+#ticker .tk.live b { background: var(--p3-charcoal); color: #fff; }
+#ticker .sep { display: inline-block; width: 12px; height: 12px; background: #fff; margin: 0 26px; transform: rotate(45deg); position: relative; top: -3px; }
+#ticker .end { flex: none; background: #fff; color: var(--p3-red); font-weight: 900; font-size: 22px; letter-spacing: 0.08em; padding: 0 22px; display: flex; align-items: center; text-transform: uppercase; }
+
+#foot { position: absolute; left: 30px; right: 30px; top: 1052px; height: 26px; display: flex; justify-content: space-between; align-items: center; font-size: 15px; color: #8d8e96; font-weight: 500; }
+#foot .err { color: var(--p3-pink-light); }
+
+/* ---- first run without a key ---- */
+#setup { position: absolute; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; background: rgba(18,19,23,0.94); }
+#setup[hidden] { display: none; }
+#setup form { width: 960px; background: var(--p3-charcoal); border-top: 8px solid var(--p3-red); padding: 50px 56px; border-radius: var(--r-box); }
+#setup h1 { margin: 0 0 16px; font-size: 44px; font-weight: 800; }
+#setup p { font-size: 24px; line-height: 1.5; color: var(--p3-muted); margin: 0 0 18px; }
+#setup code { color: #fff; }
+#setup input { width: 100%; font: inherit; font-size: 28px; padding: 14px 18px; border-radius: var(--r-mid); border: 2px solid var(--p3-line); background: var(--p3-night); color: #fff; }
+#setup input:focus { outline: 4px solid #fff; outline-offset: 2px; }
+#setup button { margin-top: 22px; font: inherit; font-size: 26px; font-weight: 700; background: var(--p3-red); color: #fff; border: 0; padding: 14px 34px; cursor: pointer; border-radius: var(--r-mid); }
+#setup button:focus { outline: 4px solid #fff; outline-offset: 3px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
+</head>
+<body>
+<div id="screen">
+<div id="stage" aria-label="My Teams TV">
+  <section id="video" aria-label="Highlights">
+    <div id="player"></div>
+    <div id="slate"><div class="eyebrow">My Teams TV</div><div class="big">Getting the scores&hellip;</div><div class="small">Results, fixtures and highlights from TheSportsDB</div></div>
+    <div id="bug"><span class="k">Highlights</span><span class="v"></span></div>
+    <div id="sound" hidden>Press OK for sound</div>
+  </section>
+  <aside id="side">
+    <div id="clock"><div class="time">&nbsp;</div><div class="day">&nbsp;</div><div class="zones">&nbsp;</div></div>
+    <div id="brand"><span class="chip"><span class="mark">My Teams</span><span class="tv">TV</span></span></div>
+    <div id="panel"></div>
+    <div id="prog"><div class="bar"><i></i></div><span></span></div>
+  </aside>
+  <div id="lower" aria-live="polite">
+    <div class="tab">My Teams</div>
+    <div class="bar"><img class="hb" alt="" hidden><div class="txt"><div class="l1">&nbsp;</div><div class="l2">&nbsp;</div></div><img class="ab" alt="" hidden></div>
+  </div>
+  <div id="next"><div class="count"><b>&ndash;</b><small>&nbsp;</small></div><div class="txt"><div class="head">Next up</div><div class="game">&nbsp;</div><div class="sub">&nbsp;</div></div></div>
+  <div id="ticker" aria-hidden="true"><div class="label">Team news</div><div class="track"><div class="run"></div></div><div class="end">My Teams</div></div>
+  <div id="foot"><span>Scores, fixtures &amp; highlights: TheSportsDB &middot; Video: YouTube</span><span class="err"></span></div>
+</div>
+</div>
+<div id="setup" hidden>
+  <form>
+    <h1>TheSportsDB key</h1>
+    <p>This copy of the page talks to TheSportsDB itself, so it needs your premium key. It is kept in this browser only.
+       (Run <code>serve.py</code> instead and the key stays on the server.)</p>
+    <label class="sr" for="key">Key</label>
+    <input id="key" autocomplete="off" spellcheck="false" placeholder="Your TheSportsDB key">
+    <button type="submit">Save and start</button>
+  </form>
+</div>
+<script>window.MYTEAMS_CONFIG = {"title":"My Teams","teams":[{"id":"133639","name":"St Johnstone"},{"id":"133990","name":"Rosenborg"},{"id":"133613","name":"Manchester City"},{"id":"133602","name":"Liverpool"},{"id":"134149","name":"Seattle Sounders"},{"id":"136516","name":"Norway"},{"id":"136450","name":"Scotland"},{"id":"140082","name":"Seattle Kraken"},{"id":"156282","name":"Seattle Torrent"},{"id":"136520","name":"Glasgow Clan"},{"id":"140834","name":"Frisk Asker"},{"id":"134934","name":"Dallas Cowboys"},{"id":"134941","name":"Minnesota Vikings"},{"id":"136448","name":"Seattle Storm"},{"id":"135345","name":"Caledonia Gladiators"},{"id":"135097","name":"Valencia Basket"}],"feeds":[{"name":"Liverpool","team":"133602","url":"https://feeds.bbci.co.uk/sport/football/teams/liverpool/rss.xml"},{"name":"Man City","team":"133613","url":"https://feeds.bbci.co.uk/sport/football/teams/manchester-city/rss.xml"},{"name":"St Johnstone","team":"133639","url":"https://feeds.bbci.co.uk/sport/football/teams/st-johnstone/rss.xml"},{"name":"Ice hockey","sport":"Ice Hockey","url":"https://feeds.bbci.co.uk/sport/ice-hockey/rss.xml"},{"name":"NFL","sport":"American Football","url":"https://feeds.bbci.co.uk/sport/american-football/rss.xml"}],"options":{"highlightDays":21,"maxHighlights":40,"resultsDays":3,"clock":"12h","timeZone":"","timeZones":[{"label":"SCO","tz":"Europe/London"},{"label":"NOR","tz":"Europe/Oslo"}],"panelSeconds":15,"teamSeconds":10,"tickerSpeed":120,"perFeed":6,"tableStaleDays":45}};</script>
+<script>/* My Teams TV - the pure rules (no page, no network): which games are results, fixtures, live or highlights, how names
+ * and times are written, which slice of a league table to show, what the ticker says, and how an RSS or Atom feed is
+ * read. Loaded by the page as window.Core and by node:test through module.exports. */
+(function (root) {
+  "use strict";
+
+  const FINISHED = new Set([
+    "FT", "AET", "PEN", "AOT", "AP", "OT", "SO", "FT_PEN", "AWD", "WO", "MATCH FINISHED", "FINISHED", "FINAL",
+    "AFTER OVER TIME", "AFTER PENALTIES", "AFTER EXTRA TIME", "F/OT", "F/SO",
+  ]);
+  const NOT_STARTED = new Set(["", "NS", "NOT STARTED", "TBD", "TIME TO BE DEFINED", "SCHEDULED"]);
+  const CALLED_OFF = new Set(["PST", "POSTPONED", "CANC", "CANCELLED", "CANCELED", "ABD", "ABANDONED", "SUSP"]);
+
+  const status = (e) => String((e && e.strStatus) || "").trim().toUpperCase();
+  const isFinished = (e) => FINISHED.has(status(e));
+  const isCalledOff = (e) =>
+    CALLED_OFF.has(status(e)) || String((e && e.strPostponed) || "").toLowerCase() === "yes";
+  const isNotStarted = (e) => NOT_STARTED.has(status(e));
+
+  /** The kick-off as a Date: strTimestamp is UTC without a zone; else dateEvent + strTime, also UTC. */
+  function kickoff(e) {
+    if (!e) return null;
+    const ts = String(e.strTimestamp || "").trim();
+    if (ts) {
+      const d = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(ts) ? ts : ts + "Z");
+      if (!isNaN(d)) return d;
+    }
+    if (e.dateEvent) {
+      const t = /^\d\d:\d\d/.test(String(e.strTime || "")) ? String(e.strTime).slice(0, 8) : "00:00:00";
+      const d = new Date(`${e.dateEvent}T${t.length === 5 ? t + ":00" : t}Z`);
+      if (!isNaN(d)) return d;
+    }
+    return null;
+  }
+
+  /** The YouTube video id in any of its link shapes; null for anything else. */
+  function videoId(url) {
+    const s = String(url || "").trim();
+    if (!s) return null;
+    const m =
+      s.match(/[?&]v=([\w-]{11})/) ||
+      s.match(/youtu\.be\/([\w-]{11})/) ||
+      s.match(/youtube(?:-nocookie)?\.com\/(?:embed|shorts|live|v)\/([\w-]{11})/);
+    return m ? m[1] : null;
+  }
+
+  const NAME_FIXES = [
+    [/^Brighton and Hove Albion$/i, "Brighton"],
+    [/^Wolverhampton Wanderers$/i, "Wolves"],
+    [/^Tottenham Hotspur$/i, "Tottenham"],
+    [/^Nottingham Forest$/i, "Nott'm Forest"],
+    [/^West Ham United$/i, "West Ham"],
+    [/^Newcastle United$/i, "Newcastle"],
+    [/^Leeds United$/i, "Leeds"],
+    [/^AFC Bournemouth$/i, "Bournemouth"],
+    [/^Sheffield United$/i, "Sheff Utd"],
+    [/^Sheffield Wednesday$/i, "Sheff Wed"],
+    [/^Queens Park Rangers$/i, "QPR"],
+    [/^Paris Saint-Germain$/i, "PSG"],
+    [/^Heart of Midlothian$/i, "Hearts"],
+    [/^Inverness Caledonian Thistle$/i, "Inverness CT"],
+    [/^Hamilton Academical$/i, "Hamilton"],
+    [/^Queen of the South$/i, "Queen of Sth"],
+    [/^Partick Thistle$/i, "Partick"],
+    [/^Inter Miami CF$/i, "Inter Miami"],
+    [/^Los Angeles FC$/i, "LAFC"],
+  ];
+
+  /** A team name short enough for a table row or a ticker: "Manchester City" -> "Man City". */
+  function shortName(name) {
+    let s = String(name || "").trim();
+    for (const [re, to] of NAME_FIXES) if (re.test(s)) return to;
+    s = s
+      .replace(/^(A\.?F\.?C\.?|F\.?C\.?|C\.?F\.?|S\.?C\.?)\s+/i, "")
+      .replace(/\s+(A\.?F\.?C\.?|F\.?C\.?|C\.?F\.?|S\.?C\.?)$/i, "")
+      .replace(/^Manchester\s+/i, "Man ")
+      .replace(/\s+United$/i, " Utd");
+    return s;
+  }
+
+  const LEAGUE_FIXES = [
+    [/^English Premier League$/i, "Premier League"],
+    [/^Scottish Premier League$/i, "Scottish Premiership"],
+    [/^Scottish Championship$/i, "Scottish Championship"],
+    [/^American Major League Soccer$/i, "MLS"],
+    [/^Norwegian Eliteserien$/i, "Eliteserien"],
+    [/^Norwegian Fjordkraft-ligaen$/i, "Fjordkraft-ligaen"],
+    [/^UK Elite Ice Hockey League$/i, "Elite League"],
+    [/^British Super League Basketball$/i, "Super League Basketball"],
+    [/^Spanish Liga ACB$/i, "Liga ACB"],
+    [/^EuroLeague Basketball$/i, "EuroLeague"],
+    [/^American PWHL$/i, "PWHL"],
+    [/^World Cup Qualifying UEFA$/i, "World Cup Qualifier"],
+  ];
+
+  function shortLeague(name) {
+    const s = String(name || "").trim();
+    for (const [re, to] of LEAGUE_FIXES) if (re.test(s)) return to;
+    return s;
+  }
+
+  /** TheSportsDB's sport name as its v2 livescore path wants it: "Ice Hockey" -> "ice_hockey". */
+  const sportSlug = (sport) => String(sport || "").trim().toLowerCase().replace(/\s+/g, "_");
+
+  /** Every game once, by event id, the later copy's fields winning (a refetch, a live score). */
+  function mergeEvents(...lists) {
+    const by = new Map();
+    for (const list of lists)
+      for (const e of list || [])
+        if (e && e.idEvent) by.set(String(e.idEvent), Object.assign({}, by.get(String(e.idEvent)) || {}, e));
+    return [...by.values()];
+  }
+
+  const HOUR = 3600e3;
+  const DAY = 24 * HOUR;
+
+  /** Finished games, newest first; [days] keeps only those that recent. */
+  function results(events, now, days) {
+    return (events || [])
+      .filter((e) => isFinished(e) && kickoff(e) && (!days || now - kickoff(e) <= days * DAY))
+      .sort((a, b) => kickoff(b) - kickoff(a));
+  }
+
+  /** Games still to come or under way (not finished, not called off, kicked off within the last 4 hours), soonest first. */
+  function fixtures(events, now) {
+    return (events || [])
+      .filter((e) => !isFinished(e) && !isCalledOff(e) && kickoff(e) && kickoff(e) - now > -4 * HOUR)
+      .sort((a, b) => kickoff(a) - kickoff(b));
+  }
+
+  /** Games that may be live now: kicked off, under 4 hours ago, no final status yet. */
+  function inPlayWindow(events, now) {
+    return fixtures(events, now).filter((e) => kickoff(e) <= now);
+  }
+
+  /** The games with the livescore rows laid over them (score, minute, status); [live] is the rows by event id. */
+  function applyLive(events, live) {
+    return (events || []).map((e) => {
+      const l = live && live.get(String(e.idEvent));
+      if (!l) return e;
+      return Object.assign({}, e, {
+        intHomeScore: l.intHomeScore != null ? l.intHomeScore : e.intHomeScore,
+        intAwayScore: l.intAwayScore != null ? l.intAwayScore : e.intAwayScore,
+        strStatus: l.strStatus || e.strStatus,
+        strProgress: l.strProgress,
+        live: !FINISHED.has(String(l.strStatus || "").toUpperCase()),
+      });
+    });
+  }
+
+  /** Whether a game is being played now: a live row says so, or a status that is neither waiting nor final. */
+  function isLive(e) {
+    if (!e) return false;
+    if (e.live === true) return true;
+    if (e.live === false) return false;
+    return !isFinished(e) && !isNotStarted(e) && !isCalledOff(e);
+  }
+
+  /** The highlights to play: finished games with a YouTube link, newest first, one per video, within [days]. */
+  function highlights(events, now, opts) {
+    const days = (opts && opts.days) || 21;
+    const max = (opts && opts.max) || 40;
+    const seen = new Set();
+    const out = [];
+    for (const e of results(events, now, days)) {
+      const id = videoId(e.strVideo);
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      out.push(Object.assign({ videoId: id }, e));
+      if (out.length >= max) break;
+    }
+    return out;
+  }
+
+  /** The playing order: highlights not yet seen this session first (newest first), then the rest; never empty when
+   * there are highlights. [skip] is the videos that failed to play (embedding refused, removed). */
+  function nextHighlight(list, played, current, skip) {
+    const ok = list.filter((h) => !(skip && skip.has(h.videoId)));
+    if (!ok.length) return null;
+    const fresh = ok.find((h) => !played.has(h.videoId) && h.videoId !== current);
+    if (fresh) return fresh;
+    played.clear();
+    const at = ok.findIndex((h) => h.videoId === current);
+    return ok[(at + 1) % ok.length];
+  }
+
+  /** A slice of [size] rows from a league table that holds as many tracked teams as it can, the first of them
+   * nearest the middle; the whole table when it is no bigger. Rows keep their rank order. */
+  function tableWindow(rows, tracked, size) {
+    const sorted = [...(rows || [])].sort((a, b) => Number(a.intRank) - Number(b.intRank));
+    if (sorted.length <= size) return sorted;
+    const hits = sorted.map((r, i) => (tracked.has(String(r.idTeam)) ? i : -1)).filter((i) => i >= 0);
+    if (!hits.length) return sorted.slice(0, size);
+    let best = 0;
+    let bestScore = -1;
+    for (let start = 0; start + size <= sorted.length; start++) {
+      const inside = hits.filter((i) => i >= start && i < start + size);
+      const mid = start + (size - 1) / 2;
+      const score = inside.length * 1000 - (inside.length ? Math.abs(inside[0] - mid) : 0);
+      if (score > bestScore) {
+        bestScore = score;
+        best = start;
+      }
+    }
+    return sorted.slice(best, best + size);
+  }
+
+  /** The table for a team: the group holding it when the league is split (MLS conferences, World Cup groups), and
+   * nothing when the table is stale (no row updated within [staleDays]: a finished tournament). */
+  function teamTable(rows, teamIds, now, staleDays) {
+    if (!rows || !rows.length) return null;
+    const newest = Math.max(...rows.map((r) => Date.parse(String(r.dateUpdated || "").replace(" ", "T") + "Z") || 0));
+    if (staleDays && newest && now - newest > staleDays * DAY) return null;
+    const groups = new Set(rows.map((r) => r.strGroup || ""));
+    if (groups.size <= 1) return rows;
+    const mine = rows.find((r) => teamIds.has(String(r.idTeam)));
+    return mine ? rows.filter((r) => (r.strGroup || "") === (mine.strGroup || "")) : null;
+  }
+
+  // ---- time ----
+
+  const fmtCache = new Map();
+  function fmt(tz, opts) {
+    const k = (tz || "") + JSON.stringify(opts);
+    if (!fmtCache.has(k)) fmtCache.set(k, new Intl.DateTimeFormat("en-GB", Object.assign({ timeZone: tz || undefined }, opts)));
+    return fmtCache.get(k);
+  }
+  const parts = (d, tz, opts) => Object.fromEntries(fmt(tz, opts).formatToParts(d).map((p) => [p.type, p.value]));
+
+  /** "5.10pm" (the 12-hour broadcast clock) or "17:10". */
+  function clock(d, mode, tz) {
+    const p = parts(d, tz, { hour: "numeric", minute: "2-digit", hour12: false, hourCycle: "h23" });
+    const h = Number(p.hour) % 24;
+    if (mode === "24h") return `${String(h).padStart(2, "0")}:${p.minute}`;
+    return `${h % 12 || 12}.${p.minute}${h < 12 ? "am" : "pm"}`;
+  }
+
+  /** "Sunday 15 November" */
+  function longDay(d, tz) {
+    const p = parts(d, tz, { weekday: "long", day: "numeric", month: "long" });
+    return `${p.weekday} ${p.day} ${p.month}`;
+  }
+
+  const dayKey = (d, tz) => {
+    const p = parts(d, tz, { year: "numeric", month: "2-digit", day: "2-digit" });
+    return `${p.year}-${p.month}-${p.day}`;
+  };
+
+  /** "Today", "Tomorrow", "Yesterday" or "Sat 22 Nov". */
+  function dayName(d, now, tz) {
+    const k = dayKey(d, tz);
+    if (k === dayKey(now, tz)) return "Today";
+    if (k === dayKey(new Date(now.getTime() + DAY), tz)) return "Tomorrow";
+    if (k === dayKey(new Date(now.getTime() - DAY), tz)) return "Yesterday";
+    const p = parts(d, tz, { weekday: "short", day: "numeric", month: "short" });
+    return `${p.weekday} ${p.day} ${p.month}`;
+  }
+
+  /** "Today 16:30", "Sat 22 Nov 16:30"; the time always 24-hour, as fixture lists are. */
+  function when(d, now, tz) {
+    return `${dayName(d, now, tz)} ${clock(d, "24h", tz)}`;
+  }
+
+  /** The countdown to a kick-off: {big: "2d" | "5h" | "45m" | "LIVE", small: "days" | ...}. */
+  function countdown(ms) {
+    if (ms <= 0) return { big: "LIVE", small: "now" };
+    const m = Math.ceil(ms / 60e3);
+    if (m < 60) return { big: `${m}m`, small: m === 1 ? "minute" : "minutes" };
+    const h = Math.floor(ms / HOUR);
+    if (h < 24) return { big: `${h}h`, small: h === 1 ? "hour" : "hours" };
+    const days = Math.floor(ms / DAY);
+    return { big: `${days}d`, small: days === 1 ? "day" : "days" };
+  }
+
+  // ---- words ----
+
+  const score = (v) => (v === null || v === undefined || v === "" ? null : String(v));
+
+  /** "Crystal Palace 1-3 Liverpool" (en dash); "Crystal Palace v Liverpool" before a score exists. */
+  function scoreLine(e, short) {
+    const n = short ? shortName : (x) => String(x || "");
+    const hs = score(e.intHomeScore);
+    const as = score(e.intAwayScore);
+    const mid = hs !== null && as !== null ? ` ${hs}\u2013${as} ` : " v ";
+    return `${n(e.strHomeTeam)}${mid}${n(e.strAwayTeam)}`;
+  }
+
+  /** The status words for a game: "FT", "34'", "HT", "AET", "Pens". */
+  function statusText(e) {
+    const s = status(e);
+    if (e.strProgress && isLive(e)) return /^\d+$/.test(String(e.strProgress)) ? `${e.strProgress}'` : String(e.strProgress);
+    if (s === "PEN" || s === "AP" || s === "FT_PEN") return "Pens";
+    if (s === "AOT" || s === "OT") return "OT";
+    if (FINISHED.has(s)) return s === "AET" ? "AET" : "FT";
+    if (CALLED_OFF.has(s)) return "P-P";
+    return s;
+  }
+
+  // ---- feeds ----
+
+  const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", rsquo: "\u2019", lsquo: "\u2018", ldquo: "\u201c", rdquo: "\u201d", ndash: "\u2013", mdash: "\u2014", hellip: "\u2026" };
+
+  function decodeEntities(s) {
+    return String(s || "").replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, k) => {
+      if (k[0] === "#") {
+        const n = k[1] === "x" || k[1] === "X" ? parseInt(k.slice(2), 16) : parseInt(k.slice(1), 10);
+        return isNaN(n) ? m : String.fromCodePoint(n);
+      }
+      return ENTITIES[k.toLowerCase()] !== undefined ? ENTITIES[k.toLowerCase()] : m;
+    });
+  }
+
+  function tagText(block, tag) {
+    const m = block.match(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</${tag}>`, "i"));
+    if (!m) return "";
+    let t = m[1].trim();
+    const cdata = t.match(/^<!\[CDATA\[([\s\S]*?)\]\]>$/);
+    t = cdata ? cdata[1] : decodeEntities(t);
+    return t.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+  }
+
+  /** The items of an RSS 2.0 or Atom feed: [{title, date, link}], newest first, untitled ones left out. */
+  function parseFeed(xml) {
+    const text = String(xml || "");
+    const blocks = text.match(/<item[\s>][\s\S]*?<\/item>/gi) || text.match(/<entry[\s>][\s\S]*?<\/entry>/gi) || [];
+    const out = [];
+    for (const b of blocks) {
+      const title = tagText(b, "title");
+      if (!title) continue;
+      const when = tagText(b, "pubDate") || tagText(b, "updated") || tagText(b, "published") || tagText(b, "dc:date");
+      const date = when ? new Date(when) : null;
+      let link = tagText(b, "link");
+      if (!link) {
+        const m = b.match(/<link[^>]*href="([^"]+)"/i);
+        link = m ? decodeEntities(m[1]) : "";
+      }
+      out.push({ title, date: date && !isNaN(date) ? date : null, link });
+    }
+    return out.sort((a, b) => (b.date ? b.date.getTime() : 0) - (a.date ? a.date.getTime() : 0));
+  }
+
+  /** The ticker's items, in order: live games, then the feeds' headlines (taking turns between feeds, [perFeed] each,
+   * from the last [feedDays]) with a recent result after every [every] of them, the results left over, then the next
+   * fixtures. Each {kind, label, text}. */
+  function tickerItems(input, now, opts) {
+    const o = Object.assign({ perFeed: 6, feedDays: 4, results: 8, fixtures: 4, every: 3, tz: "" }, opts || {});
+    const out = [];
+    for (const e of input.live || []) out.push({ kind: "live", label: "LIVE", text: `${scoreLine(e)} ${statusText(e)}`.trim() });
+    const res = (input.results || [])
+      .slice(0, o.results)
+      .map((e) => ({ kind: "result", label: statusText(e), text: `${scoreLine(e)} (${shortLeague(e.strLeague)})` }));
+    const lists = (input.feeds || []).map((f) =>
+      (f.items || [])
+        .filter((i) => !i.date || now - i.date <= o.feedDays * DAY)
+        .slice(0, o.perFeed)
+        .map((i) => ({ kind: "news", label: f.name, text: i.title }))
+    );
+    const seen = new Set();
+    let news = 0;
+    for (let i = 0; lists.some((l) => i < l.length); i++)
+      for (const l of lists)
+        if (i < l.length && !seen.has(l[i].text.toLowerCase())) {
+          seen.add(l[i].text.toLowerCase());
+          out.push(l[i]);
+          if (++news % o.every === 0 && res.length) out.push(res.shift());
+        }
+    out.push(...res);
+    for (const e of (input.fixtures || []).filter((x) => !isLive(x)).slice(0, o.fixtures))
+    {
+      const tv = o.tv ? o.tv(e) : "";
+      const at = o.zones ? zonesWhen(kickoff(e), now, o.zones) : when(kickoff(e), now, o.tz);
+      out.push({ kind: "next", label: "NEXT", text: `${scoreLine(e)}, ${at}${tv ? ` (TV: ${tv})` : ""}` });
+    }
+    return out;
+  }
+
+  // ---- one team's page ----
+
+  /** "1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "102nd". */
+  function ordinal(n) {
+    const v = Number(n);
+    if (!isFinite(v)) return String(n || "");
+    const t = v % 100;
+    const s = t >= 11 && t <= 13 ? "th" : ["th", "st", "nd", "rd"][v % 10] || "th";
+    return `${v}${s}`;
+  }
+
+  /** How long ago: "just now", "25m ago", "3h ago", "Yesterday", "3 days ago"; "" without a date. */
+  function ago(d, now) {
+    if (!d) return "";
+    const ms = now - d;
+    if (ms < 2 * 60e3) return "just now";
+    if (ms < HOUR) return `${Math.floor(ms / 60e3)}m ago`;
+    if (ms < DAY) return `${Math.floor(ms / HOUR)}h ago`;
+    if (ms < 2 * DAY) return "Yesterday";
+    return `${Math.floor(ms / DAY)} days ago`;
+  }
+
+  /** The finished game from [teamId]'s side: {mark: "W" | "D" | "L" | null, us, them} (null mark: level after pens,
+   * where the score does not say who won). Null when it is not a finished game with a score. */
+  function teamResult(e, teamId) {
+    if (!e || !isFinished(e)) return null;
+    const h = Number(e.intHomeScore);
+    const a = Number(e.intAwayScore);
+    if (e.intHomeScore === null || e.intHomeScore === undefined || e.intHomeScore === "" || isNaN(h) || isNaN(a)) return null;
+    const home = String(e.idHomeTeam) === String(teamId);
+    const us = home ? h : a;
+    const them = home ? a : h;
+    const mark = us > them ? "W" : us < them ? "L" : /^(PEN|AP|SO|FT_PEN|F\/SO)$/i.test(String(e.strStatus || "")) ? null : "D";
+    return { mark, us, them, home };
+  }
+
+  /** The other side's name in a game of [teamId]'s, and "v" (at home) or "at" (away). */
+  function opponent(e, teamId) {
+    const home = String(e.idHomeTeam) === String(teamId);
+    return { name: home ? e.strAwayTeam : e.strHomeTeam, badge: home ? e.strAwayTeamBadge : e.strHomeTeamBadge, home };
+  }
+
+  /** The team's place in the tables shown: {rank, points, played, league, group}; null when no table holds it. */
+  function teamPosition(tables, teamId) {
+    for (const t of tables || [])
+      for (const r of t.rows || [])
+        if (String(r.idTeam) === String(teamId))
+          return { rank: Number(r.intRank), points: r.intPoints, played: r.intPlayed, league: t.league, group: t.group || "" };
+    return null;
+  }
+
+  const GENERIC = new Set(["fc", "afc", "city", "united", "utd", "basket", "club", "sc", "the", "of", "and", "town", "county"]);
+
+  /** The words that name a team in a headline: its names, and its last word when that is not a common one
+   * ("Kraken", "Clan", "Vikings"; not "City" or "Basket"). Lower case. */
+  function teamWords(team) {
+    // not strTeamShort: "SEA" or "LIV" would match words that are not the team
+    const names = [team.strTeam, team.name, team.strTeam && shortName(team.strTeam)]
+      .filter((x) => x && String(x).length >= 3)
+      .map((x) => String(x).toLowerCase());
+    const out = new Set(names);
+    const last = String(team.strTeam || team.name || "").trim().split(/\s+/).pop().toLowerCase();
+    if (last.length >= 4 && !GENERIC.has(last)) out.add(last);
+    return [...out];
+  }
+
+  /** The newest headline about a team: from a feed given its id ("team" in the config), else a feed named after it,
+   * else any feed's headline that names it. {item, feed} or null. */
+  function teamNews(feeds, team) {
+    const id = String(team.idTeam || team.id || "");
+    const words = teamWords(team);
+    const named = (f) => f.team ? String(f.team) === id : words.includes(String(f.name || "").toLowerCase());
+    const newest = (list) => list.sort((a, b) => (b.item.date ? b.item.date.getTime() : 0) - (a.item.date ? a.item.date.getTime() : 0))[0] || null;
+    const own = (feeds || []).filter(named).flatMap((f) => (f.items || []).map((item) => ({ item, feed: f.name })));
+    if (own.length) return newest(own);
+    const re = words.length ? new RegExp(`\\b(${words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`, "i") : null;
+    // a mention counts only in a feed of the team's own sport ("Storm" in an ice hockey feed is Manchester's)
+    const sameSport = (f) => !f.sport || !team.strSport || String(f.sport).toLowerCase() === String(team.strSport).toLowerCase();
+    const mention = re
+      ? (feeds || []).filter((f) => !f.team && sameSport(f)).flatMap((f) => (f.items || []).filter((i) => re.test(i.title)).map((item) => ({ item, feed: f.name })))
+      : [];
+    return newest(mention);
+  }
+
+  /** The side column's order: the general pages spread evenly through the team pages. */
+  function interleave(general, teams) {
+    if (!general.length) return [...teams];
+    if (!teams.length) return [...general];
+    const per = Math.ceil(teams.length / general.length);
+    const out = [];
+    general.forEach((g, i) => out.push(g, ...teams.slice(i * per, (i + 1) * per)));
+    return out;
+  }
+
+  // ---- both houses: times and TV ----
+
+  /** A kick-off in each house's time: "Sat 22 Nov · 16:30 SCO · 17:30 NOR". The day is the first zone's; a zone on
+   * another day says so ("00:30 NOR Sun"). [zones]: [{label, tz}]. */
+  function zonesWhen(d, now, zones) {
+    if (!zones || !zones.length) return when(d, now);
+    return `${dayName(d, now, zones[0].tz)} · ${zonesTimes(d, zones)}`;
+  }
+
+  /** The kick-off times alone: "19:45 SCO · 20:45 NOR" (a zone on another day says so: "00:30 NOR Sun"). */
+  function zonesTimes(d, zones) {
+    const key0 = dayKey(d, zones[0].tz);
+    return zones
+      .map((z) => {
+        const t = `${clock(d, "24h", z.tz)} ${z.label}`;
+        return dayKey(d, z.tz) === key0 ? t : `${t} ${parts(d, z.tz, { weekday: "short" }).weekday}`;
+      })
+      .join(" · ");
+  }
+
+  /** The time now in each house: "SCO 8.05pm · NOR 9.05pm". */
+  function zonesClock(d, zones, mode) {
+    return (zones || []).map((z) => `${z.label} ${clock(d, mode, z.tz)}`).join("  ·  ");
+  }
+
+  const UK = /^(united kingdom|uk|england|scotland|wales|northern ireland|great britain)$/i;
+  const NO = /^(norway|no|norge)$/i;
+
+  /** TheSportsDB's broadcasters (lookuptv's "tvevent") cut to the UK and Norway: [{channel, country: "UK" | "NO"}]. */
+  function tvFromTsdb(rows) {
+    const out = [];
+    const seen = new Set();
+    for (const r of rows || []) {
+      const c = UK.test(String(r.strCountry || "").trim()) ? "UK" : NO.test(String(r.strCountry || "").trim()) ? "NO" : null;
+      const ch = String(r.strChannel || "").trim();
+      if (!c || !ch || seen.has(c + ch.toLowerCase())) continue;
+      seen.add(c + ch.toLowerCase());
+      out.push({ channel: ch, country: c });
+    }
+    return out;
+  }
+
+  /** "UK Sky Sports Premier League, TNT Sports · NO Viaplay"; "" when there is nothing for either country. */
+  function tvLine(list) {
+    const by = { UK: [], NO: [] };
+    for (const t of list || []) {
+      const c = String(t.country || "").toUpperCase();
+      // a guide's numbering ("892 - ") off; its test and accessibility feeds left out
+      const ch = String(t.channel || "").replace(/^\d+\s*-\s*/, "").trim();
+      if (!ch || /\b(test|accessibility)\b/i.test(ch)) continue;
+      if (by[c] && !by[c].includes(ch)) by[c].push(ch);
+    }
+    return ["UK", "NO"].filter((c) => by[c].length).map((c) => `${c} ${by[c].join(", ")}`).join(" · ");
+  }
+
+  const Core = {
+    isFinished, isCalledOff, isNotStarted, isLive, kickoff, videoId, shortName, shortLeague, sportSlug, mergeEvents,
+    results, fixtures, inPlayWindow, applyLive, highlights, nextHighlight, tableWindow, teamTable, clock, longDay,
+    dayName, when, countdown, scoreLine, statusText, decodeEntities, parseFeed, tickerItems,
+    ordinal, ago, teamResult, opponent, teamPosition, teamWords, teamNews, interleave,
+    zonesWhen, zonesTimes, zonesClock, tvFromTsdb, tvLine,
+  };
+  if (typeof module !== "undefined" && module.exports) module.exports = Core;
+  else root.Core = Core;
+})(typeof globalThis !== "undefined" ? globalThis : this);
+</script>
+<script>/* My Teams TV - the page at work: finds its server (serve.py or Nevermore IPTV) or runs on its own with a key, reads
+ * the teams' games from TheSportsDB, plays the highlights through YouTube's player, and keeps the side column, the
+ * lower third, Next up and the ticker current. The rules live in core.js. */
+(function () {
+  "use strict";
+  const C = window.Core;
+  const TSDB = "https://www.thesportsdb.com/api";
+  const $ = (s, el) => (el || document).querySelector(s);
+  const params = new URLSearchParams(location.search);
+
+  const state = {
+    mode: "direct", // "server" when api/config answers
+    key: "",
+    config: window.MYTEAMS_CONFIG || { teams: [], feeds: [], options: {} },
+    teams: new Map(), // id -> TheSportsDB team
+    events: new Map(), // idEvent -> event (merged), with .mine = [tracked team ids]
+    live: new Map(), // idEvent -> livescore row
+    tables: [], // [{league, group, rows, mine:Set}]
+    tv: new Map(), // idEvent -> [{channel, country: "UK" | "NO"}]
+    tvAsked: new Map(), // idEvent -> when TheSportsDB was last asked (the fallback source)
+    feeds: [], // [{name, items}]
+    hl: [],
+    current: null,
+    history: [],
+    played: new Set(),
+    skip: new Set(),
+    player: null,
+    playerReady: false,
+    sound: false,
+    errors: new Map(),
+    fullTime: null, // {event, until}
+  };
+  const opt = (k, d) => {
+    const v = state.config.options && state.config.options[k];
+    return v === undefined || v === null || v === "" ? d : v;
+  };
+  const tz = () => params.get("tz") || opt("timeZone", "") || undefined;
+  /** The houses' times every kick-off is given in (options.timeZones). */
+  const zones = () => opt("timeZones", [{ label: "SCO", tz: "Europe/London" }, { label: "NOR", tz: "Europe/Oslo" }]);
+  const kickoffText = (e, now) => C.zonesWhen(C.kickoff(e), now, zones());
+  const tvText = (e) => C.tvLine(state.tv.get(String(e.idEvent)));
+  const clockMode = () => params.get("clock") || opt("clock", "12h");
+
+  // ---------- storage (may be missing: private windows, a WebView without it) ----------
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch (_) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (_) { /* not kept */ } },
+    del(k) { try { localStorage.removeItem(k); } catch (_) { /* nothing */ } },
+  };
+  function cached(k, maxAgeMs) {
+    try {
+      const j = JSON.parse(store.get("mt:" + k) || "null");
+      if (j && Date.now() - j.t < maxAgeMs) return j.v;
+    } catch (_) { /* unreadable */ }
+    return undefined;
+  }
+  const keep = (k, v) => store.set("mt:" + k, JSON.stringify({ t: Date.now(), v }));
+
+  // ---------- network ----------
+  let lastDirect = 0;
+  const queue = [];
+  let running = 0;
+  function slot() {
+    const limit = state.mode === "server" ? 4 : 1;
+    return new Promise((resolve) => {
+      queue.push(resolve);
+      pump(limit);
+    });
+  }
+  function pump(limit) {
+    while (running < limit && queue.length) {
+      running++;
+      queue.shift()();
+    }
+  }
+  function release() {
+    running--;
+    pump(state.mode === "server" ? 4 : 1);
+  }
+
+  async function fetchText(url, headers, label) {
+    await slot();
+    try {
+      if (state.mode === "direct") {
+        const wait = lastDirect + 400 - Date.now(); // the premium key allows 100 a minute; the first minute asks ~60
+        if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+        lastDirect = Date.now();
+      }
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 20000);
+      try {
+        const r = await fetch(url, { cache: "no-store", headers: headers || {}, signal: ctl.signal });
+        const text = await r.text();
+        if (!r.ok) throw new Error(`${label || "request"}: HTTP ${r.status}${text && text.length < 200 ? " " + text : ""}`);
+        state.errors.delete(label);
+        return text;
+      } finally {
+        clearTimeout(timer);
+      }
+    } catch (err) {
+      if (label) state.errors.set(label, err.message || String(err));
+      throw err;
+    } finally {
+      release();
+      drawFoot();
+    }
+  }
+  async function fetchJson(url, headers, label) {
+    const text = await fetchText(url, headers, label);
+    if (!text.trim()) return {};
+    return JSON.parse(text);
+  }
+  const api = {
+    v2: (path) =>
+      state.mode === "server"
+        ? fetchJson(`api/tsdb/v2/${path}`, null, "TheSportsDB")
+        : fetchJson(`${TSDB}/v2/json/${path}`, { X_API_KEY: state.key }, "TheSportsDB"),
+    v1: (call) =>
+      state.mode === "server"
+        ? fetchJson(`api/tsdb/v1/${call}`, null, "TheSportsDB")
+        : fetchJson(`${TSDB}/v1/json/${encodeURIComponent(state.key)}/${call}`, null, "TheSportsDB"),
+    rss: (url) => fetchText(state.mode === "server" ? `api/rss?u=${encodeURIComponent(url)}` : url, null, null),
+  };
+
+  // ---------- start ----------
+  async function boot() {
+    fit();
+    addEventListener("resize", fit);
+    if (window.visualViewport) visualViewport.addEventListener("resize", fit);
+    if (window.ResizeObserver) new ResizeObserver(fit).observe($("#screen"));
+    setInterval(fit, 2000); // a WebView resized without telling (a box in Nevermore's four screens)
+    tickClock();
+    setInterval(tickClock, 1000);
+    try {
+      const r = await fetch("api/config", { cache: "no-store" });
+      const j = r.ok ? await r.json() : null;
+      if (j && j.server) {
+        state.mode = "server";
+        state.serverTv = !!j.tv; // Home Assistant hands over HA Team Scores' channels at api/tv
+        if (j.config) state.config = j.config;
+        if (!j.key) return fail("The server has no TheSportsDB key. Put SPORTSDB_API_KEY in its .env and start it again.");
+      }
+    } catch (_) {
+      // no server: this page runs on its own
+    }
+    if (state.mode === "direct") {
+      const given = params.get("key");
+      if (given) {
+        store.set("mt:key", given.trim());
+        params.delete("key");
+        history.replaceState(null, "", location.pathname + (params.toString() ? "?" + params : "") + location.hash);
+      }
+      state.key = (store.get("mt:key") || "").trim();
+      if (!state.key) return askKey();
+    }
+    $("#brand .mark").textContent = state.config.title || "My Teams";
+    $("#ticker .end").textContent = state.config.title || "My Teams";
+    document.title = `${state.config.title || "My Teams"} TV`;
+    start();
+  }
+
+  function askKey() {
+    const box = $("#setup");
+    box.hidden = false;
+    const input = $("#key", box);
+    input.focus();
+    $("form", box).addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      const k = input.value.trim();
+      if (!k) return;
+      store.set("mt:key", k);
+      state.key = k;
+      box.hidden = true;
+      start();
+    });
+  }
+
+  function fail(msg) {
+    $("#slate .big").textContent = "Not connected";
+    $("#slate .small").textContent = msg;
+  }
+
+  async function start() {
+    setupKeys();
+    await loadSchedules();
+    drawAll();
+    pollLive().catch(() => {});
+    loadFeeds().then(() => drawTicker(true));
+    loadTeams().then(loadTables).then(loadTv).then(buildPanels);
+    every(30 * 60e3, async () => { await loadTv(); buildPanels(); });
+    every(10 * 60e3, async () => { await loadSchedules(); drawAll(); });
+    every(10 * 60e3, async () => { await loadFeeds(); });
+    every(30 * 60e3, async () => { await loadTables(); buildPanels(); });
+    every(30e3, pollLive);
+    setInterval(drawNext, 8000);
+    setInterval(drawLowerIdle, 9000);
+    rotatePanels();
+  }
+
+  function every(ms, fn) {
+    setInterval(() => fn().catch(() => {}), ms);
+  }
+
+  // ---------- data ----------
+  async function loadTeams() {
+    for (const t of state.config.teams || []) {
+      const hit = cached("team:" + t.id, 24 * 3600e3);
+      if (hit) {
+        state.teams.set(String(t.id), hit);
+        continue;
+      }
+      try {
+        const j = await api.v2(`lookup/team/${encodeURIComponent(t.id)}`);
+        const team = (j.lookup || j.teams || [])[0];
+        if (team) {
+          const slim = {
+            idTeam: team.idTeam, strTeam: team.strTeam, strTeamShort: team.strTeamShort, strSport: team.strSport,
+            idLeague: team.idLeague, strLeague: team.strLeague, strBadge: team.strBadge, strColour1: team.strColour1,
+          };
+          state.teams.set(String(t.id), slim);
+          keep("team:" + t.id, slim);
+        }
+      } catch (_) {
+        state.teams.set(String(t.id), { idTeam: t.id, strTeam: t.name });
+      }
+    }
+  }
+
+  async function loadSchedules() {
+    const ids = (state.config.teams || []).map((t) => String(t.id));
+    const jobs = [];
+    for (const id of ids)
+      for (const which of ["previous", "next"])
+        jobs.push(
+          api.v2(`schedule/${which}/team/${encodeURIComponent(id)}`)
+            .then((j) => ({ id, list: j.schedule || j.events || j.results || [] }))
+            .catch(() => null)
+        );
+    const got = (await Promise.all(jobs)).filter(Boolean);
+    if (!got.length) return;
+    for (const { id, list } of got)
+      for (const e of list) {
+        const k = String(e.idEvent);
+        const old = state.events.get(k);
+        const mine = new Set([...(old && old.mine) || [], id]);
+        state.events.set(k, Object.assign({}, old || {}, e, { mine: [...mine] }));
+      }
+    // forget games older than the highlight window, so a long-running page does not grow
+    const cutoff = Date.now() - (opt("highlightDays", 21) + 2) * 864e5;
+    for (const [k, e] of state.events) if (C.kickoff(e) && C.kickoff(e).getTime() < cutoff) state.events.delete(k);
+    rebuildHighlights();
+  }
+
+  function allEvents() {
+    return C.applyLive([...state.events.values()], state.live);
+  }
+
+  async function pollLive() {
+    const now = new Date();
+    const inWin = C.inPlayWindow([...state.events.values()], now);
+    if (!inWin.length) {
+      if (state.live.size) { state.live.clear(); drawAll(); }
+      return;
+    }
+    const sports = [...new Set(inWin.map((e) => C.sportSlug(e.strSport)).filter(Boolean))];
+    const rows = new Map();
+    for (const s of sports) {
+      try {
+        const j = await api.v2(`livescore/${s}`);
+        for (const r of j.livescore || []) rows.set(String(r.idEvent), r);
+      } catch (_) { /* next time */ }
+    }
+    const before = new Map(state.live);
+    state.live = new Map();
+    for (const e of inWin) {
+      const r = rows.get(String(e.idEvent));
+      if (r) state.live.set(String(e.idEvent), r);
+    }
+    // a game that was live and now says full time: FULL TIME on the bug for 20 minutes, the result fetched soon
+    for (const [id, r] of state.live) {
+      if (C.isFinished(r) && before.has(id) && !C.isFinished(before.get(id))) {
+        state.fullTime = { event: Object.assign({}, state.events.get(id), r), until: Date.now() + 20 * 60e3 };
+        setTimeout(() => loadSchedules().then(drawAll).catch(() => {}), 120e3);
+      }
+    }
+    drawAll();
+  }
+
+  async function loadFeeds() {
+    const per = opt("perFeed", 6);
+    const out = [];
+    for (const f of state.config.feeds || []) {
+      try {
+        out.push({ name: f.name, team: f.team, sport: f.sport, items: C.parseFeed(await api.rss(f.url)).slice(0, per * 2) });
+      } catch (_) {
+        const old = state.feeds.find((x) => x.name === f.name);
+        if (old) out.push(old);
+      }
+    }
+    state.feeds = out;
+  }
+
+  /** UK and Norwegian channels for the coming games. Hosted in Home Assistant, api/tv hands over what HA Team Scores
+   * has found (TV guides, broadcasters, the usual channels by team); elsewhere TheSportsDB's broadcaster list is asked
+   * for the games of the next 10 days, each at most every 3 hours. */
+  async function loadTv() {
+    if (state.mode === "server" && state.serverTv) {
+      try {
+        const j = await fetchJson("api/tv", null, null);
+        if (j && j.events) {
+          for (const [id, list] of Object.entries(j.events)) state.tv.set(String(id), list || []);
+          return;
+        }
+      } catch (_) {
+        // not this server: TheSportsDB below
+      }
+    }
+    const now = Date.now();
+    const soon = C.fixtures([...state.events.values()], new Date())
+      .filter((e) => C.kickoff(e) - now < 10 * 864e5)
+      .slice(0, 16);
+    for (const e of soon) {
+      const id = String(e.idEvent);
+      if (now - (state.tvAsked.get(id) || 0) < 3 * 3600e3) continue;
+      try {
+        const j = await api.v1(`lookuptv.php?id=${encodeURIComponent(id)}`);
+        state.tv.set(id, C.tvFromTsdb(j.tvevent || []));
+        state.tvAsked.set(id, now);
+      } catch (_) { /* next time */ }
+    }
+  }
+
+  async function loadTables() {
+    const now = Date.now();
+    const byLeague = new Map(); // idLeague -> Set(team ids)
+    for (const t of state.config.teams || []) {
+      const team = state.teams.get(String(t.id));
+      if (!team || team.strSport !== "Soccer" || !team.idLeague) continue;
+      if (!byLeague.has(team.idLeague)) byLeague.set(team.idLeague, new Set());
+      byLeague.get(team.idLeague).add(String(t.id));
+    }
+    const tables = [];
+    for (const [lid, mine] of byLeague) {
+      try {
+        let season = cached("season:" + lid, 24 * 3600e3);
+        let name = cached("league:" + lid, 24 * 3600e3);
+        if (!season) {
+          const j = await api.v2(`lookup/league/${lid}`);
+          const lg = (j.lookup || j.leagues || [])[0] || {};
+          season = lg.strCurrentSeason;
+          name = lg.strLeague;
+          if (season) { keep("season:" + lid, season); keep("league:" + lid, name); }
+        }
+        if (!season) continue;
+        const t = await api.v1(`lookuptable.php?l=${encodeURIComponent(lid)}&s=${encodeURIComponent(season)}`);
+        const rows = C.teamTable(t.table || [], mine, now, opt("tableStaleDays", 45));
+        if (!rows || !rows.length) continue;
+        // the group's name only where the league is split (MLS conferences, tournament groups)
+        const group = /conference|group|division|pool/i.test(rows[0].strGroup || "") ? rows[0].strGroup : "";
+        tables.push({ league: C.shortLeague(rows[0].strLeague || name), group, rows, mine, season });
+      } catch (_) { /* this league next time */ }
+    }
+    if (tables.length) state.tables = tables;
+  }
+
+  function rebuildHighlights() {
+    state.hl = C.highlights(allEvents(), new Date(), { days: opt("highlightDays", 21), max: opt("maxHighlights", 40) });
+    if (state.hl.length && !state.player && !state.noVideo) loadYouTube();
+    if (!videoMode()) showSlate(state.noVideo);
+  }
+
+  /** Whether a highlight is the picture (the lower third then describes it); else the results board is. */
+  const videoMode = () => !!(state.current && state.playerReady && state.hl.length);
+
+  // ---------- the player ----------
+  function loadYouTube() {
+    if (location.protocol === "file:") {
+      state.noVideo = "Highlights need the page served over http(s): run serve.py, or host the page.";
+      return;
+    }
+    state.player = "loading";
+    window.onYouTubeIframeAPIReady = makePlayer;
+    const s = document.createElement("script");
+    s.src = "https://www.youtube.com/iframe_api";
+    s.onerror = () => { state.player = null; state.noVideo = "YouTube could not be reached."; showSlate(state.noVideo); };
+    document.head.appendChild(s);
+  }
+
+  let watchdog = null;
+  function makePlayer() {
+    const first = C.nextHighlight(state.hl, state.played, null, state.skip);
+    if (!first) return showSlate();
+    state.current = first;
+    state.history.push(first);
+    drawLowerVideo(first);
+    showSlate(null, first);
+    const muted = params.get("mute") === "1";
+    state.player = new YT.Player("player", {
+      width: 1472, height: 828, videoId: first.videoId,
+      playerVars: {
+        autoplay: 1, controls: 0, rel: 0, fs: 0, disablekb: 1, iv_load_policy: 3, modestbranding: 1, playsinline: 1,
+        cc_load_policy: 0, origin: location.origin, mute: muted ? 1 : 0,
+      },
+      events: {
+        onReady: (ev) => {
+          state.playerReady = true;
+          if (!muted) { try { ev.target.unMute(); } catch (_) { /* old player */ } }
+          ev.target.playVideo();
+          checkAutoplay();
+        },
+        onStateChange: (ev) => {
+          if (ev.data === YT.PlayerState.PLAYING) {
+            clearTimeout(watchdog);
+            // YouTube turns captions on for muted autoplay; the lower third says what the clip is
+            try { ev.target.unloadModule("captions"); ev.target.unloadModule("cc"); } catch (_) { /* none */ }
+            if (state.current) {
+              state.played.add(state.current.videoId);
+              drawLowerVideo(state.current);
+            }
+            hideSlate();
+          } else if (ev.data === YT.PlayerState.ENDED) {
+            playNext();
+          } else if (ev.data === YT.PlayerState.UNSTARTED || ev.data === YT.PlayerState.BUFFERING) {
+            arm();
+          }
+        },
+        onError: () => {
+          // 101 / 150: the owner does not allow it outside YouTube; 100: removed; 2 / 5: bad id or player trouble
+          if (state.current) state.skip.add(state.current.videoId);
+          playNext();
+        },
+      },
+    });
+  }
+
+  function arm() {
+    clearTimeout(watchdog);
+    watchdog = setTimeout(() => playNext(), 30000); // stuck loading: move on (not marked bad; tried again later)
+  }
+
+  /** Browsers refuse sound before the viewer has pressed anything: start muted then, and say how to get sound. */
+  function checkAutoplay() {
+    setTimeout(() => {
+      const p = state.player;
+      if (!p || !p.getPlayerState) return;
+      const st = p.getPlayerState();
+      if (st !== YT.PlayerState.PLAYING && st !== YT.PlayerState.BUFFERING) {
+        p.mute();
+        p.playVideo();
+        $("#sound").hidden = false;
+      } else if (p.isMuted && p.isMuted()) {
+        $("#sound").hidden = false;
+      } else {
+        state.sound = true;
+      }
+    }, 2500);
+  }
+
+  function playNext(back) {
+    if (!state.player || !state.playerReady) return;
+    clearTimeout(watchdog);
+    let h = null;
+    if (back) {
+      state.history.pop(); // the one playing now
+      h = state.history.pop() || null;
+    }
+    h = h || C.nextHighlight(state.hl, state.played, state.current && state.current.videoId, state.skip);
+    if (!h) {
+      // nothing left that plays: stop the player, the board and the results take over
+      state.current = null;
+      try { state.player.stopVideo(); } catch (_) { /* gone */ }
+      showSlate();
+      drawLowerIdle();
+      return;
+    }
+    state.current = h;
+    state.history.push(h);
+    if (state.history.length > 50) state.history.shift();
+    drawLowerVideo(h);
+    showSlate(null, h);
+    state.player.loadVideoById(h.videoId);
+    arm();
+  }
+
+  function soundOn() {
+    const p = state.player;
+    $("#sound").hidden = true;
+    if (p && p.unMute) {
+      p.unMute();
+      p.setVolume && p.setVolume(100);
+      if (p.getPlayerState && p.getPlayerState() !== YT.PlayerState.PLAYING) p.playVideo();
+    }
+    state.sound = true;
+  }
+
+  function setupKeys() {
+    addEventListener("keydown", (ev) => {
+      const k = ev.key;
+      if (k === "ArrowRight" || k === "MediaTrackNext" || k === "n") { playNext(); ev.preventDefault(); }
+      else if (k === "ArrowLeft" || k === "MediaTrackPrevious" || k === "p") { playNext(true); ev.preventDefault(); }
+      else if (k === "Enter" || k === " " || k === "MediaPlayPause" || k === "m") {
+        const p = state.player;
+        if (k === "m" && p && p.isMuted && !p.isMuted()) {
+          p.mute();
+          $("#sound").hidden = false;
+        } else soundOn();
+        ev.preventDefault();
+      }
+    });
+    addEventListener("pointerdown", soundOn);
+  }
+
+  // ---------- drawing ----------
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const img = (url, size) => (url ? `${url}${size ? "/" + size : ""}` : "");
+  const badge = (url, size) => (url ? `<img src="${esc(img(url, size || "tiny"))}" alt="" onerror="this.style.visibility='hidden'">` : "<span></span>");
+
+  /** Scale the 1920 x 1080 canvas to the screen and centre it. The size comes from the clipping box (#screen, fixed
+   * to the viewport), not innerWidth, which a WebView can report wider than the screen. */
+  let fitted = "";
+  function fit() {
+    const box = $("#screen");
+    const w = box.clientWidth || document.documentElement.clientWidth || innerWidth;
+    const h = box.clientHeight || document.documentElement.clientHeight || innerHeight;
+    if (!w || !h) return;
+    const s = Math.min(w / 1920, h / 1080);
+    const t = `translate(${(w - 1920 * s) / 2}px, ${(h - 1080 * s) / 2}px) scale(${s})`;
+    if (t !== fitted) $("#stage").style.transform = fitted = t;
+  }
+
+  function tickClock() {
+    const now = new Date();
+    $("#clock .time").textContent = C.clock(now, clockMode(), tz());
+    $("#clock .day").textContent = C.longDay(now, tz());
+    $("#clock .zones").textContent = C.zonesClock(now, zones(), clockMode());
+  }
+
+  function drawAll() {
+    rebuildHighlights();
+    drawBug();
+    drawNext(true);
+    drawLowerIdle();
+    buildPanels();
+    if (!ticker) drawTicker();
+  }
+
+  function liveGames() {
+    return C.fixtures(allEvents(), new Date()).filter((e) => state.live.has(String(e.idEvent)) && C.isLive(e));
+  }
+
+  function drawBug() {
+    const bug = $("#bug");
+    const live = liveGames();
+    if (live.length) {
+      bug.className = "live";
+      $(".k", bug).textContent = "Live";
+      $(".v", bug).textContent = live.length === 1 ? `${C.scoreLine(live[0], true)} ${C.statusText(live[0])}` : `${live.length} games`;
+    } else if (state.fullTime && state.fullTime.until > Date.now()) {
+      bug.className = "";
+      $(".k", bug).textContent = "Full time";
+      $(".v", bug).textContent = C.scoreLine(state.fullTime.event, true);
+    } else {
+      bug.className = "";
+      $(".k", bug).textContent = "Highlights";
+      $(".v", bug).textContent = "";
+    }
+  }
+
+  function showSlate(message, upcoming) {
+    const sl = $("#slate");
+    sl.classList.remove("gone");
+    if (upcoming) {
+      sl.style.setProperty("--slate-img", upcoming.strThumb ? `url("${img(upcoming.strThumb, "medium")}")` : "none");
+      sl.innerHTML = `<div class="eyebrow">Highlights &middot; ${esc(C.shortLeague(upcoming.strLeague))}</div>
+        <div class="big">${esc(C.scoreLine(upcoming))}</div>
+        <div class="small">${esc(C.dayName(C.kickoff(upcoming), new Date(), tz()))}${upcoming.strVenue ? " &middot; " + esc(upcoming.strVenue) : ""}</div>`;
+      return;
+    }
+    sl.style.setProperty("--slate-img", "none");
+    const now = new Date();
+    const res = C.results(allEvents(), now, 10).slice(0, 7);
+    const fix = C.fixtures(allEvents(), now).slice(0, 7);
+    const row = (e, right) => `<div class="row">${badge(e.strHomeTeamBadge)}${esc(C.scoreLine(e, true))}${badge(e.strAwayTeamBadge)}<small>${esc(right)}</small></div>`;
+    sl.innerHTML = `<div class="eyebrow">${esc(state.config.title || "My Teams")} TV</div>
+      <div class="big">${message ? esc(message) : "Results and fixtures"}</div>
+      <div class="board">
+        <div><h3>Latest results</h3>${res.map((e) => row(e, C.dayName(C.kickoff(e), now, tz()))).join("") || '<div class="row">None yet</div>'}</div>
+        <div><h3>Coming up</h3>${fix.map((e) => row(e, C.isLive(e) ? "LIVE " + C.statusText(e) : C.when(C.kickoff(e), now, tz()))).join("") || '<div class="row">None found</div>'}</div>
+      </div>`;
+  }
+  function hideSlate() {
+    $("#slate").classList.add("gone");
+  }
+
+  function setLower(tab, home, line1Html, line2, away) {
+    const lo = $("#lower");
+    $(".tab", lo).textContent = tab;
+    const hb = $(".hb", lo);
+    const ab = $(".ab", lo);
+    hb.hidden = !home;
+    ab.hidden = !away;
+    if (home) hb.src = img(home, "small");
+    if (away) ab.src = img(away, "small");
+    $(".l1", lo).innerHTML = line1Html;
+    $(".l2", lo).textContent = line2;
+  }
+
+  function lineHtml(e) {
+    const hs = e.intHomeScore;
+    const as = e.intAwayScore;
+    const scored = hs !== null && hs !== undefined && hs !== "" && as !== null && as !== undefined && as !== "";
+    return scored
+      ? `${esc(e.strHomeTeam)}<span class="sc">${esc(hs)}–${esc(as)}</span>${esc(e.strAwayTeam)}`
+      : `${esc(e.strHomeTeam)} v ${esc(e.strAwayTeam)}`;
+  }
+
+  function drawLowerVideo(h) {
+    const d = C.kickoff(h);
+    const bits = ["Highlights", C.longDay(d, tz()), h.strVenue, h.intRound && /league|liga|serien|mls|nhl|nfl|wnba/i.test(h.strLeague) ? `Round ${h.intRound}` : ""];
+    setLower(C.shortLeague(h.strLeague), h.strHomeTeamBadge, lineHtml(h), bits.filter(Boolean).join("  ·  "), h.strAwayTeamBadge);
+  }
+
+  let idleAt = 0;
+  /** With no highlight on screen, the lower third walks through live games and the latest results. */
+  function drawLowerIdle() {
+    if (videoMode()) return;
+    const now = new Date();
+    const list = [...liveGames(), ...C.results(allEvents(), now, 7).slice(0, 10)];
+    if (!list.length) return;
+    const e = list[idleAt++ % list.length];
+    const live = C.isLive(e) && state.live.has(String(e.idEvent));
+    setLower(
+      live ? `Live · ${C.shortLeague(e.strLeague)}` : C.shortLeague(e.strLeague),
+      e.strHomeTeamBadge, lineHtml(e),
+      [live ? C.statusText(e) : C.statusText(e) === "FT" ? "Full time" : C.statusText(e), C.longDay(C.kickoff(e), tz()), e.strVenue].filter(Boolean).join("  ·  "),
+      e.strAwayTeamBadge
+    );
+  }
+
+  let nextAt = 0;
+  function drawNext(reset) {
+    const now = new Date();
+    const list = C.fixtures(allEvents(), now).filter((e) => !(state.live.has(String(e.idEvent)) && C.isLive(e))).slice(0, 6);
+    if (reset) nextAt = 0;
+    const box = $("#next");
+    if (!list.length) {
+      $(".count b", box).textContent = "–";
+      $(".count small", box).textContent = "";
+      $(".game", box).textContent = "No fixtures found";
+      $(".sub", box).textContent = "";
+      return;
+    }
+    const idx = nextAt++ % list.length;
+    const e = list[idx];
+    const cd = C.countdown(C.kickoff(e) - now);
+    $(".count b", box).textContent = cd.big;
+    $(".count small", box).textContent = cd.small;
+    const day = C.dayName(C.kickoff(e), now, zones()[0] && zones()[0].tz);
+    $(".head", box).textContent = `${idx === 0 ? "Next up" : `${idx + 1} of ${list.length}`} · ${day}`;
+    $(".game", box).textContent = C.scoreLine(e, true);
+    $(".sub", box).textContent = zones().length ? C.zonesTimes(C.kickoff(e), zones()) : C.when(C.kickoff(e), now, tz());
+  }
+
+  // ---- the side column's pages ----
+  let panes = [];
+  let paneAt = 0;
+  let rotTimer = null;
+
+  /** One team's page: badge and name, a live game, the last game, the next game, its place in the table, its newest
+   * headline. Blocks with nothing to say are left out. */
+  function teamPage(t, evs, now) {
+    const id = String(t.id);
+    const info = state.teams.get(id) || {};
+    const name = info.strTeam || t.name;
+    const ours = (e) => (e.mine || []).includes(id) || String(e.idHomeTeam) === id || String(e.idAwayTeam) === id;
+    const live = liveGames().find(ours);
+    const last = C.results(evs, now).find(ours);
+    const next = C.fixtures(evs, now).find((e) => ours(e) && !(live && String(e.idEvent) === String(live.idEvent)));
+    const pos = C.teamPosition(state.tables, id);
+    const news = C.teamNews(state.feeds, Object.assign({ idTeam: id, name: t.name }, info));
+    const league = C.shortLeague(info.strLeague || (last || next || {}).strLeague || "");
+    const vs = (e) => {
+      const o = C.opponent(e, id);
+      return { badge: o.badge, text: `${o.home ? "v" : "at"} ${C.shortName(o.name)}` };
+    };
+    const blocks = [];
+    if (live) {
+      const o = vs(live);
+      blocks.push(`<div class="tb"><h4>Live now</h4><div class="g"><span class="rk live">${esc(C.statusText(live))}</span>${badge(o.badge)}<span>${esc(C.scoreLine(live, true))}</span></div><div class="s">${esc(C.shortLeague(live.strLeague))}</div></div>`);
+    }
+    if (last) {
+      const r = C.teamResult(last, id);
+      const o = vs(last);
+      const mark = r && r.mark ? r.mark : C.statusText(last);
+      const score = r ? `${r.us}–${r.them} ` : "";
+      blocks.push(`<div class="tb"><h4>Last game</h4><div class="g"><span class="rk ${esc(mark)}">${esc(mark)}</span>${badge(o.badge)}<span>${esc(score + o.text)}</span></div><div class="s">${esc(C.dayName(C.kickoff(last), now, tz()))} &middot; ${esc(C.shortLeague(last.strLeague))}</div></div>`);
+    }
+    if (next) {
+      const o = vs(next);
+      const cd = C.countdown(C.kickoff(next) - now);
+      const tv = tvText(next);
+      blocks.push(`<div class="tb"><h4>Next game</h4><div class="g"><span class="rk">${esc(cd.big)}</span>${badge(o.badge)}<span>${esc(o.text)}</span></div><div class="s">${esc(kickoffText(next, now))}</div>${tv ? `<div class="tv"><i>TV</i>${esc(tv)}</div>` : `<div class="s">${esc(C.shortLeague(next.strLeague))}</div>`}</div>`);
+    }
+    if (pos)
+      blocks.push(`<div class="tb"><h4>League</h4><div class="pos"><b>${esc(C.ordinal(pos.rank))}</b><span>${esc(pos.points)} pts &middot; ${esc(pos.played)} played</span></div><div class="s">${esc(pos.league)}${pos.group ? " &middot; " + esc(pos.group) : ""}</div></div>`);
+    if (news)
+      blocks.push(`<div class="tb"><h4>Latest news</h4><div class="news">${esc(news.item.title)}</div><div class="s">${esc(news.feed)}${news.item.date ? " &middot; " + esc(C.ago(news.item.date, now)) : ""}</div></div>`);
+    if (!blocks.length) blocks.push(`<div class="tb"><div class="none">No games found in the last three weeks or coming up.</div></div>`);
+    const logo = info.strBadge ? `<img src="${esc(img(info.strBadge, "small"))}" alt="" onerror="this.style.visibility='hidden'">` : "";
+    return `<div class="team-h">${logo}<div><div class="n">${esc(name)}</div><div class="l">${esc(league || info.strSport || "")}</div></div></div>${blocks.join("")}`;
+  }
+
+  function buildPanels() {
+    const now = new Date();
+    const evs = allEvents();
+    const pages = [];
+    const keys = [];
+    const live = liveGames();
+    const PER = 5; // results a page holds
+    const PER_FIX = 4; // coming games a page holds (each has a TV line too)
+    const has = (v) => v !== null && v !== undefined && v !== "";
+    // one line per team, scoreboard style, so full names fit; the winner bright, the loser dimmed
+    const gameLi = (e, meta, cls, foot) => {
+      const scored = has(e.intHomeScore) && has(e.intAwayScore);
+      const h = Number(e.intHomeScore);
+      const a = Number(e.intAwayScore);
+      const side = (name, b, sc, mine, other) =>
+        `<div class="tm${scored && C.isFinished(e) ? (mine > other ? " won" : mine < other ? " lost" : "") : ""}">${badge(b)}<span>${esc(C.shortName(name))}</span><b>${scored ? esc(sc) : ""}</b></div>`;
+      return `<li class="${cls || ""}"><div class="meta">${meta}</div>${side(e.strHomeTeam, e.strHomeTeamBadge, e.intHomeScore, h, a)}${side(e.strAwayTeam, e.strAwayTeamBadge, e.intAwayScore, a, h)}${foot || ""}</li>`;
+    };
+    // a coming game: when in both houses, then its UK and Norwegian channels (the competition when none are known)
+    const tvFoot = (e) => {
+      const tv = tvText(e);
+      return tv ? `<div class="tv"><i>TV</i>${esc(tv)}</div>` : `<div class="tv">${esc(C.shortLeague(e.strLeague))}</div>`;
+    };
+    const fixLi = (e) => gameLi(e, `<b>${esc(kickoffText(e, now))}</b>`, "", tvFoot(e));
+    const liveIds = new Set(live.map((e) => String(e.idEvent)));
+    const fix = C.fixtures(evs, now).filter((e) => !liveIds.has(String(e.idEvent)));
+    if (live.length) {
+      // live games first, the next fixtures filling the page under them
+      const shown = live.slice(0, PER_FIX);
+      const later = fix.slice(0, Math.max(0, PER_FIX - 1 - shown.length));
+      pages.push(`<div class="ph">Live now <small>${live.length} GAME${live.length > 1 ? "S" : ""}</small></div><ul class="gl">${shown.map((e) => gameLi(e, `<b>${esc(C.statusText(e))}</b> &middot; ${esc(C.shortLeague(e.strLeague))}`, "live", tvText(e) ? `<div class="tv"><i>TV</i>${esc(tvText(e))}</div>` : "")).join("")}${later.length ? `<li class="sub">Later</li>${later.map(fixLi).join("")}` : ""}</ul>`);
+      keys.push("live");
+    }
+    const res = C.results(evs, now, 14).slice(0, PER);
+    if (res.length) {
+      pages.push(`<div class="ph">Latest results <small>FULL TIME</small></div><ul class="gl">${res.map((e) => gameLi(e, `<b>${esc(C.statusText(e))}</b> &middot; ${esc(C.dayName(C.kickoff(e), now, tz()))} &middot; ${esc(C.shortLeague(e.strLeague))}`)).join("")}</ul>`);
+      keys.push("results");
+    }
+    if (fix.length) {
+      pages.push(`<div class="ph">Coming up <small>FIXTURES</small></div><ul class="gl">${fix.slice(0, PER_FIX).map(fixLi).join("")}</ul>`);
+      keys.push("fixtures");
+    }
+    const tableHtml = (t) => {
+      const rows = C.tableWindow(t.rows, t.mine, 8); // two tables to a page, as on the reference
+      return `<div class="ph">${esc(t.league)}${t.group ? ` <small>${esc(t.group.toUpperCase())}</small>` : ""}</div>
+        <table class="lg"><colgroup><col style="width:36px"><col><col style="width:46px"><col style="width:48px"><col style="width:54px"></colgroup>
+        <thead><tr><th></th><th></th><th>PLD</th><th>PTS</th><th>GD</th></tr></thead><tbody>
+        ${rows.map((r) => {
+          const gd = Number(r.intGoalDifference);
+          return `<tr class="${t.mine.has(String(r.idTeam)) ? "me" : ""}"><td class="pos">${esc(r.intRank)}</td><td>${esc(C.shortName(r.strTeam))}</td><td class="n">${esc(r.intPlayed)}</td><td class="n">${esc(r.intPoints)}</td><td class="n gd ${gd > 0 ? "plus" : gd < 0 ? "minus" : ""}">${gd > 0 ? "+" : ""}${esc(r.intGoalDifference)}</td></tr>`;
+        }).join("")}</tbody></table>`;
+    };
+    for (let i = 0; i < state.tables.length; i += 2) {
+      pages.push(state.tables.slice(i, i + 2).map(tableHtml).join(""));
+      keys.push(`tables:${state.tables[i].league}`);
+    }
+    const general = pages.map((html, i) => ({ key: keys[i], secs: opt("panelSeconds", 15), html }));
+    const teams = evs.length || state.teams.size
+      ? (state.config.teams || []).map((t) => ({ key: `team:${t.id}`, secs: opt("teamSeconds", 10), html: teamPage(t, evs, now) }))
+      : [];
+    const all = C.interleave(general, teams);
+    if (!all.length) all.push({ key: "wait", secs: 15, html: `<div class="ph">My teams</div><ul class="gl"><li><div class="meta">Waiting for TheSportsDB</div></li></ul>` });
+
+    // rebuilt in place: the page on screen stays on screen, and its time runs on
+    const showing = panes[paneAt] && panes[paneAt].dataset.key;
+    const panel = $("#panel");
+    panel.innerHTML = all.map((p) => `<div class="pane" data-key="${esc(p.key)}" data-secs="${p.secs}">${p.html}</div>`).join("");
+    const first = !panes.length || !rotTimer;
+    panes = [...panel.children];
+    const at = panes.findIndex((el) => el.dataset.key === showing);
+    if (first || at < 0) {
+      // ?pane=team:133639 starts on that page (checks and screenshots)
+      const asked = panes.findIndex((el) => el.dataset.key === params.get("pane"));
+      return showPane(asked > 0 ? asked : 0);
+    }
+    paneAt = at;
+    panes[at].classList.add("on");
+    $("#prog span").textContent = `${at + 1} / ${panes.length}`;
+  }
+
+  /** Shows page [i] of the side column for its own time (team pages are shorter), with the bar filling meanwhile. */
+  function showPane(i) {
+    if (!panes.length) return;
+    paneAt = i % panes.length;
+    panes.forEach((el, j) => el.classList.toggle("on", j === paneAt));
+    const secs = Number(panes[paneAt].dataset.secs) || 15;
+    const bar = $("#prog .bar i");
+    bar.style.transition = "none";
+    bar.style.width = "0";
+    void bar.offsetWidth; // start the fill from empty
+    bar.style.transition = `width ${secs}s linear`;
+    bar.style.width = "100%";
+    $("#prog span").textContent = `${paneAt + 1} / ${panes.length}`;
+    clearTimeout(rotTimer);
+    rotTimer = setTimeout(() => showPane(paneAt + 1), secs * 1000);
+  }
+
+  function rotatePanels() {
+    if (!rotTimer) showPane(0);
+  }
+
+  // ---- the ticker ----
+  let ticker = null; // the running scroll; its end draws the next pass with whatever is new
+  function drawTicker(restart) {
+    if (ticker) {
+      if (!restart) return;
+      ticker.onfinish = null;
+      ticker.cancel();
+    }
+    const now = new Date();
+    const evs = allEvents();
+    const items = C.tickerItems(
+      { live: liveGames(), results: C.results(evs, now, opt("resultsDays", 3)), feeds: state.feeds, fixtures: C.fixtures(evs, now) },
+      now,
+      { perFeed: opt("perFeed", 6), tz: tz(), zones: zones(), tv: tvText }
+    );
+    const run = $("#ticker .run");
+    const track = $("#ticker .track");
+    if (!items.length) {
+      run.innerHTML = `<span class="tk"><b>${esc(state.config.title || "My Teams")}</b>Scores, fixtures and highlights</span>`;
+    } else {
+      run.innerHTML = items.map((i) => `<span class="tk ${i.kind}"><b>${esc(i.label)}</b>${esc(i.text)}</span>`).join('<i class="sep"></i>') + '<i class="sep"></i>';
+    }
+    const from = track.clientWidth;
+    const to = -run.scrollWidth;
+    const px = from - to;
+    const speed = Number(params.get("speed")) || opt("tickerSpeed", 120);
+    ticker = run.animate([{ transform: `translateX(${from}px)` }, { transform: `translateX(${to}px)` }], { duration: (px / speed) * 1000, easing: "linear" });
+    ticker.onfinish = () => { ticker = null; drawTicker(); };
+  }
+
+  function drawFoot() {
+    const el = $("#foot .err");
+    if (!el) return;
+    const msgs = [...state.errors.values()];
+    el.textContent = msgs.length ? msgs[0] : "";
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>

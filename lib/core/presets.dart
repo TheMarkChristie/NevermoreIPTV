@@ -153,6 +153,37 @@ Future<List<Preset>> loadPresets() async => presetsFromJson(await _houseFile());
 /// The web sites built into this copy of the app; none without the file.
 Future<List<WebSite>> loadSites() async => sitesFromJson(await _houseFile());
 
+/// The My Teams channel's setup from the house file: "myteams": {"key": "(TheSportsDB key)", "config": {teams, feeds,
+/// options}} (MyTeamsTV's config.json; myteams_server.dart serves the page with it). The key travels in the
+/// file as Mark asked (15 Nov 2026: "im the only person to use the app so it can carry").
+class MyTeamsSetup {
+  const MyTeamsSetup(this.key, this.config, {this.url});
+
+  final String key;
+  final Map<String, dynamic> config;
+
+  /// A hosted copy to open first ("url": a house's Home Assistant serves it at /myteams/); null: the built-in copy.
+  final String? url;
+}
+
+/// Null without a "myteams" entry, or with neither a hosted address nor a key and at least one team.
+MyTeamsSetup? myTeamsFromJson(Object? data) {
+  if (data is! Map) return null;
+  final m = data['myteams'];
+  if (m is! Map) return null;
+  final key = '${m['key'] ?? ''}'.trim();
+  final raw = '${m['url'] ?? ''}'.trim();
+  final url = Uri.tryParse(raw)?.scheme.startsWith('http') == true ? (raw.endsWith('/') ? raw : '$raw/') : null;
+  final config = m['config'] is Map ? Map<String, dynamic>.from(m['config'] as Map) : <String, dynamic>{};
+  final teams = config['teams'];
+  final builtIn = key.isNotEmpty && teams is List && teams.isNotEmpty;
+  if (!builtIn && url == null) return null;
+  return MyTeamsSetup(key, config, url: url);
+}
+
+/// The My Teams channel built into this copy of the app; null without it.
+Future<MyTeamsSetup?> loadMyTeams() async => myTeamsFromJson(await _houseFile());
+
 /// The preset a code opens, with its login when it carries one: a plain code is matched outright, a locked preset by
 /// the code unlocking it (slow on purpose, a second or more each). Null when no preset answers to the code.
 Future<(Preset, PresetLogin?)?> presetForCode(List<Preset> presets, String code) async {

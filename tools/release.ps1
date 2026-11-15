@@ -7,7 +7,9 @@
     One APK for everyone. When assets\house\presets.json is present (the household's preset and Web sites, built from
     docs\House-Channels.md by tools\make_house_presets.py and kept out of the repository's source), it is built in and so
     travels inside the public APK; Mark's decision of 24 Oct 2026 ("I still want that in the public one") - the file
-    holds the provider's server address, the code and the sites, never a login.
+    holds the provider's server address, the sites and the provider login locked with the code. Since 0.10.0 it also
+    holds the My Teams setup with the TheSportsDB key in plain text (Mark, 15 Nov 2026: "im the only person to use the
+    app so it can carry"), readable by anyone who downloads the APK.
 
     The APK is signed with the key in android\key.properties, which every installed copy requires of an update.
 

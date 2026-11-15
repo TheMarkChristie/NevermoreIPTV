@@ -1,11 +1,15 @@
 """Builds assets/house/presets.json (lib/core/presets.dart) from a household's channel list, and checks the list.
 
 Usage:
-    python tools/make_house_presets.py <list.md> --env <.env> [--check] [--out assets/house/presets.json]
+    python tools/make_house_presets.py <list.md> --env <.env> [--sportsdb-env <.env>] [--check] [--out assets/house/presets.json]
 
 The list (kept out of the repository) holds:
     Code: 12345678
     Source: My provider
+    My Teams: <config.json>     the built-in My Teams channel (MyTeamsTV's config.json: teams, feeds, options), with
+                                the TheSportsDB key from SPORTSDB_API_KEY in --env or --sportsdb-env
+    My Teams address: <url>     a hosted copy opened first (e.g. a house's Home Assistant /myteams/); the built-in copy
+                                when it does not answer
     ## Channels
     - GROUP: word; word         each channel of the provider group whose name holds one of the words
     - GROUP: all                the whole group
@@ -39,8 +43,8 @@ def read_env(path):
 
 
 def read_list(path):
-    """(code, source name, groups, sites) from the list."""
-    code = source = None
+    """(code, source name, guides, groups, sites, (My Teams config path, My Teams address)) from the list."""
+    code = source = myteams = myteams_url = None
     guides = []
     groups, sites = [], []
     section = None
@@ -53,6 +57,10 @@ def read_list(path):
             code = line.split(":", 1)[1].strip()
         elif line.lower().startswith("source:"):
             source = line.split(":", 1)[1].strip()
+        elif line.lower().startswith("my teams address:"):
+            myteams_url = line.split(":", 1)[1].strip()
+        elif line.lower().startswith("my teams:"):
+            myteams = line.split(":", 1)[1].strip()
         elif line.lower().startswith("guides:"):
             # epgshare01 files ticked with the picks (lib/core/guide.dart epgFiles codes: UK, NO, US, US_SPORTS, CA...)
             guides = [g.strip().upper() for g in line.split(":", 1)[1].split(",") if g.strip()]
@@ -75,7 +83,7 @@ def read_list(path):
                 sites.append({"name": m.group(1).strip(), "url": m.group(2)})
     if not code or not source:
         sys.exit("the list needs a Code: and a Source: line")
-    return code, source, guides, groups, sites
+    return code, source, guides, groups, sites, (myteams, myteams_url)
 
 
 def provider_call(base, user, password, action):
@@ -137,19 +145,32 @@ def main():
     args = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     args.add_argument("list")
     args.add_argument("--env", required=True)
+    args.add_argument("--sportsdb-env", help="a .env holding SPORTSDB_API_KEY, for the My Teams channel")
     args.add_argument("--check", action="store_true")
     args.add_argument("--out", default=str(pathlib.Path(__file__).resolve().parent.parent / "assets/house/presets.json"))
     a = args.parse_args()
-    code, source, guides, groups, sites = read_list(a.list)
+    code, source, guides, groups, sites, (myteams, myteams_url) = read_list(a.list)
     env = read_env(a.env)
     # no plain code in the file: the login is locked with it (Mark, 27 Oct 2026: "i want to ship it with this")
     preset = {"name": source, "server": env["IPTV_XTREAM_URL"], "groups": groups}
     if guides:
         preset["guides"] = guides
     preset["lock"] = lock_login(code, env["IPTV_XTREAM_USERNAME"], env["IPTV_XTREAM_PASSWORD"])
+    house = {"presets": [preset], "sites": sites}
+    if myteams:
+        # the key travels plain in the house file: Mark is the app's only user (15 Nov 2026: "im the only person to
+        # use the app so it can carry"); lib/core/myteams_server.dart keeps it off the page itself
+        key = env.get("SPORTSDB_API_KEY") or (read_env(a.sportsdb_env).get("SPORTSDB_API_KEY") if a.sportsdb_env else None)
+        if not key:
+            sys.exit("My Teams needs SPORTSDB_API_KEY: in --env, or pass --sportsdb-env <.env>")
+        house["myteams"] = {"key": key, "config": json.loads(pathlib.Path(myteams).read_text(encoding="utf-8"))}
+        if myteams_url:
+            # the house's hosted copy (Home Assistant's myteams_tv), opened first; the built-in one when it does not answer
+            house["myteams"]["url"] = myteams_url if myteams_url.endswith("/") else myteams_url + "/"
     out = pathlib.Path(a.out)
-    out.write_text(json.dumps({"presets": [preset], "sites": sites}, indent=2) + "\n", encoding="utf-8")
-    print(f"wrote {out}: {len(groups)} groups, {len(sites)} sites")
+    out.write_text(json.dumps(house, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    teams = len(house.get("myteams", {}).get("config", {}).get("teams", []))
+    print(f"wrote {out}: {len(groups)} groups, {len(sites)} sites" + (f", My Teams ({teams} teams)" if myteams else ""))
     if a.check:
         check(env, groups)
 
