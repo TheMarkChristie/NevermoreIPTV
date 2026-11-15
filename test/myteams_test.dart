@@ -68,6 +68,18 @@ void main() {
     expect(ok.url, 'https://feeds.example/liverpool.xml');
     expect((route('/api/rss?u=${Uri.encodeComponent('http://192.168.1.1/')}') as RefusedRoute).status, 403);
     expect((route('/api/rss') as RefusedRoute).status, 403);
+    // a team's YouTube feed (given on the settings page) goes through too
+    final withYoutube = {
+      ...config,
+      'teams': [
+        {'id': '135345', 'name': 'Caledonia Gladiators', 'youtubeFeed': 'https://www.youtube.com/feeds/videos.xml?channel_id=UCx'},
+      ],
+    };
+    final yt = myTeamsRoute(
+      Uri.parse('http://127.0.0.1:$myTeamsPort/api/rss?u=${Uri.encodeComponent('https://www.youtube.com/feeds/videos.xml?channel_id=UCx')}'),
+      withYoutube,
+    );
+    expect(yt, isA<RssRoute>());
   });
 
   test('answers are kept: live scores briefly, schedules minutes, lookups hours', () {
