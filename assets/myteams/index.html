@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- YouTube's player will not play without a referrer; Home Assistant sends Referrer-Policy: no-referrer on its pages -->
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<title>My Teams TV</title>
+<title>CMHjem TV</title>
 <link rel="icon" type="image/png" href="icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -51,7 +51,10 @@ body { font-family: var(--font); -webkit-font-smoothing: antialiased; }
 
 /* ---- the picture ---- */
 #video { position: absolute; left: 24px; top: 24px; width: 1472px; height: 828px; background: #000; overflow: hidden; border-radius: var(--r-box); clip-path: inset(0 round var(--r-box)); }
-#player, #video iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+/* YouTube's own title, channel name and buttons sit along the top and bottom of its player: the frame is 180 px taller
+   than the picture, so the 16:9 video sits in the middle with those bands above and below, cropped by #video.
+   No pointer on it either, so no hover overlay; clicks reach the page (sound on). */
+#player, #video iframe { position: absolute; left: 0; top: -90px; width: 100%; height: calc(100% + 180px); border: 0; pointer-events: none; }
 #slate {
   position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; padding: 70px 90px;
   background: linear-gradient(135deg, rgba(31,32,38,0.92), rgba(45,46,53,0.80)), var(--slate-img, none) center / cover no-repeat, var(--p3-night);
@@ -85,7 +88,8 @@ body { font-family: var(--font); -webkit-font-smoothing: antialiased; }
 .tb .pos { display: flex; align-items: baseline; gap: 10px; }
 .tb .pos b { font-size: 34px; font-weight: 900; line-height: 1; }
 .tb .pos span { font-size: 15px; font-weight: 600; color: var(--p3-muted); }
-.tb .news { font-size: 17px; font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.tb .news { font-size: 16px; font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tb .gap { height: 8px; }
 .tb .none { font-size: 15px; color: var(--p3-muted); font-weight: 500; }
 
 #bug {
@@ -117,15 +121,11 @@ body { font-family: var(--font); -webkit-font-smoothing: antialiased; }
 #clock .zones { font-size: 17px; font-weight: 700; color: var(--p3-pink-light); margin-top: 6px; letter-spacing: 0.02em; }
 #brand { display: flex; align-items: center; gap: 0; padding: 12px 26px; }
 #brand .chip { display: inline-flex; border-radius: var(--r-chip); overflow: hidden; }
-#brand .mark { background: var(--p3-red); color: #fff; font-weight: 900; font-size: 22px; letter-spacing: 0.08em; padding: 6px 12px; text-transform: uppercase; }
+#brand .mark { background: var(--p3-red); color: #fff; font-weight: 900; font-size: 22px; letter-spacing: 0.04em; padding: 6px 12px; }
 #brand .tv { background: #fff; color: var(--p3-charcoal); font-weight: 900; font-size: 22px; letter-spacing: 0.08em; padding: 6px 10px; }
 #panel { position: relative; flex: 1; overflow: hidden; }
 #panel .pane { position: absolute; inset: 0; padding: 2px 18px 0; opacity: 0; transform: translateX(24px); transition: opacity 0.5s ease, transform 0.5s ease; }
 #panel .pane.on { opacity: 1; transform: none; }
-#prog { display: flex; align-items: center; gap: 12px; padding: 10px 24px 16px; }
-#prog .bar { flex: 1; height: 6px; border-radius: 3px; background: var(--p3-line); overflow: hidden; }
-#prog .bar i { display: block; height: 100%; width: 0; background: var(--p3-red); border-radius: 3px; }
-#prog span { font-size: 14px; font-weight: 700; color: var(--p3-muted); font-variant-numeric: tabular-nums; min-width: 52px; text-align: right; }
 
 .ph { display: flex; align-items: baseline; justify-content: space-between; font-size: 24px; font-weight: 800; padding: 10px 8px 8px; }
 .ph small { font-size: 15px; font-weight: 600; color: var(--p3-muted); letter-spacing: 0.06em; }
@@ -186,13 +186,11 @@ table.lg tr.me td.gd { color: #fff; }
 
 /* ---- the ticker ---- */
 #ticker { position: absolute; left: 24px; top: 996px; width: 1872px; height: 52px; display: flex; background: var(--p3-red); border-radius: var(--r-mid); overflow: hidden; }
-#ticker .label { flex: none; background: var(--p3-charcoal); color: #fff; font-weight: 900; font-size: 22px; letter-spacing: 0.1em; padding: 0 24px; display: flex; align-items: center; text-transform: uppercase; }
 #ticker .track { position: relative; flex: 1; overflow: hidden; }
 #ticker .run { position: absolute; left: 0; top: 0; height: 52px; display: flex; align-items: center; white-space: nowrap; will-change: transform; font-size: 27px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.01em; }
 #ticker .tk b { font-weight: 900; color: var(--p3-charcoal); background: #fff; padding: 2px 10px; border-radius: var(--r-chip); margin-right: 12px; font-size: 21px; letter-spacing: 0.06em; position: relative; top: -2px; }
 #ticker .tk.live b { background: var(--p3-charcoal); color: #fff; }
 #ticker .sep { display: inline-block; width: 12px; height: 12px; background: #fff; margin: 0 26px; transform: rotate(45deg); position: relative; top: -3px; }
-#ticker .end { flex: none; background: #fff; color: var(--p3-red); font-weight: 900; font-size: 22px; letter-spacing: 0.08em; padding: 0 22px; display: flex; align-items: center; text-transform: uppercase; }
 
 #foot { position: absolute; left: 30px; right: 30px; top: 1052px; height: 26px; display: flex; justify-content: space-between; align-items: center; font-size: 15px; color: #8d8e96; font-weight: 500; }
 #foot .err { color: var(--p3-pink-light); }
@@ -213,25 +211,24 @@ table.lg tr.me td.gd { color: #fff; }
 </head>
 <body>
 <div id="screen">
-<div id="stage" aria-label="My Teams TV">
+<div id="stage" aria-label="CMHjem TV">
   <section id="video" aria-label="Highlights">
     <div id="player"></div>
-    <div id="slate"><div class="eyebrow">My Teams TV</div><div class="big">Getting the scores&hellip;</div><div class="small">Results, fixtures and highlights from TheSportsDB</div></div>
+    <div id="slate"><div class="eyebrow">CMHjem TV</div><div class="big">Getting the scores&hellip;</div><div class="small">Results, fixtures and highlights from TheSportsDB</div></div>
     <div id="bug"><span class="k">Highlights</span><span class="v"></span></div>
     <div id="sound" hidden>Press OK for sound</div>
   </section>
   <aside id="side">
     <div id="clock"><div class="time">&nbsp;</div><div class="day">&nbsp;</div><div class="zones">&nbsp;</div></div>
-    <div id="brand"><span class="chip"><span class="mark">My Teams</span><span class="tv">TV</span></span></div>
+    <div id="brand"><span class="chip"><span class="mark">CMHjem</span><span class="tv">TV</span></span></div>
     <div id="panel"></div>
-    <div id="prog"><div class="bar"><i></i></div><span></span></div>
   </aside>
   <div id="lower" aria-live="polite">
-    <div class="tab">My Teams</div>
+    <div class="tab">CMHjem TV</div>
     <div class="bar"><img class="hb" alt="" hidden><div class="txt"><div class="l1">&nbsp;</div><div class="l2">&nbsp;</div></div><img class="ab" alt="" hidden></div>
   </div>
   <div id="next"><div class="count"><b>&ndash;</b><small>&nbsp;</small></div><div class="txt"><div class="head">Next up</div><div class="game">&nbsp;</div><div class="sub">&nbsp;</div></div></div>
-  <div id="ticker" aria-hidden="true"><div class="label">Team news</div><div class="track"><div class="run"></div></div><div class="end">My Teams</div></div>
+  <div id="ticker" aria-hidden="true"><div class="track"><div class="run"></div></div></div>
   <div id="foot"><span>Scores, fixtures &amp; highlights: TheSportsDB &middot; Video: YouTube</span><span class="err"></span></div>
 </div>
 </div>
@@ -245,7 +242,7 @@ table.lg tr.me td.gd { color: #fff; }
     <button type="submit">Save and start</button>
   </form>
 </div>
-<script>window.MYTEAMS_CONFIG = {"title":"My Teams","teams":[{"id":"133639","name":"St Johnstone"},{"id":"133990","name":"Rosenborg"},{"id":"133613","name":"Manchester City"},{"id":"133602","name":"Liverpool"},{"id":"134149","name":"Seattle Sounders"},{"id":"136516","name":"Norway"},{"id":"136450","name":"Scotland"},{"id":"140082","name":"Seattle Kraken"},{"id":"156282","name":"Seattle Torrent"},{"id":"136520","name":"Glasgow Clan"},{"id":"140834","name":"Frisk Asker"},{"id":"134934","name":"Dallas Cowboys"},{"id":"134941","name":"Minnesota Vikings"},{"id":"136448","name":"Seattle Storm"},{"id":"135345","name":"Caledonia Gladiators"},{"id":"135097","name":"Valencia Basket"}],"feeds":[{"name":"Liverpool","team":"133602","url":"https://feeds.bbci.co.uk/sport/football/teams/liverpool/rss.xml"},{"name":"Man City","team":"133613","url":"https://feeds.bbci.co.uk/sport/football/teams/manchester-city/rss.xml"},{"name":"St Johnstone","team":"133639","url":"https://feeds.bbci.co.uk/sport/football/teams/st-johnstone/rss.xml"},{"name":"Ice hockey","sport":"Ice Hockey","url":"https://feeds.bbci.co.uk/sport/ice-hockey/rss.xml"},{"name":"NFL","sport":"American Football","url":"https://feeds.bbci.co.uk/sport/american-football/rss.xml"}],"options":{"highlightDays":21,"maxHighlights":40,"resultsDays":3,"clock":"12h","timeZone":"","timeZones":[{"label":"SCO","tz":"Europe/London"},{"label":"NOR","tz":"Europe/Oslo"}],"panelSeconds":15,"teamSeconds":10,"tickerSpeed":120,"perFeed":6,"tableStaleDays":45}};</script>
+<script>window.MYTEAMS_CONFIG = {"title":"CMHjem","teams":[{"id":"133639","name":"St Johnstone"},{"id":"133990","name":"Rosenborg"},{"id":"133613","name":"Manchester City"},{"id":"133602","name":"Liverpool"},{"id":"134149","name":"Seattle Sounders"},{"id":"136516","name":"Norway"},{"id":"136450","name":"Scotland"},{"id":"140082","name":"Seattle Kraken"},{"id":"156282","name":"Seattle Torrent"},{"id":"136520","name":"Glasgow Clan"},{"id":"140834","name":"Frisk Asker"},{"id":"134934","name":"Dallas Cowboys"},{"id":"134941","name":"Minnesota Vikings"},{"id":"136448","name":"Seattle Storm"},{"id":"135345","name":"Caledonia Gladiators"},{"id":"135097","name":"Valencia Basket"}],"feeds":[{"name":"Liverpool","team":"133602","url":"https://feeds.bbci.co.uk/sport/football/teams/liverpool/rss.xml"},{"name":"Man City","team":"133613","url":"https://feeds.bbci.co.uk/sport/football/teams/manchester-city/rss.xml"},{"name":"St Johnstone","team":"133639","url":"https://feeds.bbci.co.uk/sport/football/teams/st-johnstone/rss.xml"},{"name":"Ice hockey","sport":"Ice Hockey","url":"https://feeds.bbci.co.uk/sport/ice-hockey/rss.xml"},{"name":"NFL","sport":"American Football","url":"https://feeds.bbci.co.uk/sport/american-football/rss.xml"}],"options":{"highlightDays":21,"maxHighlights":40,"resultsDays":3,"clock":"12h","timeZone":"","timeZones":[{"label":"SCO","tz":"Europe/London"},{"label":"NOR","tz":"Europe/Oslo"}],"panelSeconds":15,"teamSeconds":10,"tickerSpeed":120,"perFeed":6,"tableStaleDays":45}};</script>
 <script>/* My Teams TV - the pure rules (no page, no network): which games are results, fixtures, live or highlights, how names
  * and times are written, which slice of a league table to show, what the ticker says, and how an RSS or Atom feed is
  * read. Loaded by the page as window.Core and by node:test through module.exports. */
@@ -688,22 +685,32 @@ table.lg tr.me td.gd { color: #fff; }
     return [...out];
   }
 
-  /** The newest headline about a team: from a feed given its id ("team" in the config), else a feed named after it,
-   * else any feed's headline that names it. {item, feed} or null. */
-  function teamNews(feeds, team) {
+  /** The newest [n] (2) headlines about a team: from feeds given its id ("team" in the config) or named after it, then
+   * headlines that name it in feeds of its sport. [{item, feed}], newest first; empty when there are none. */
+  function teamNews(feeds, team, n) {
+    const want = n || 2;
     const id = String(team.idTeam || team.id || "");
     const words = teamWords(team);
     const named = (f) => f.team ? String(f.team) === id : words.includes(String(f.name || "").toLowerCase());
-    const newest = (list) => list.sort((a, b) => (b.item.date ? b.item.date.getTime() : 0) - (a.item.date ? a.item.date.getTime() : 0))[0] || null;
-    const own = (feeds || []).filter(named).flatMap((f) => (f.items || []).map((item) => ({ item, feed: f.name })));
-    if (own.length) return newest(own);
+    const byDate = (list) => list.sort((a, b) => (b.item.date ? b.item.date.getTime() : 0) - (a.item.date ? a.item.date.getTime() : 0));
+    const own = byDate((feeds || []).filter(named).flatMap((f) => (f.items || []).map((item) => ({ item, feed: f.name }))));
     const re = words.length ? new RegExp(`\\b(${words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`, "i") : null;
     // a mention counts only in a feed of the team's own sport ("Storm" in an ice hockey feed is Manchester's)
     const sameSport = (f) => !f.sport || !team.strSport || String(f.sport).toLowerCase() === String(team.strSport).toLowerCase();
     const mention = re
-      ? (feeds || []).filter((f) => !f.team && sameSport(f)).flatMap((f) => (f.items || []).filter((i) => re.test(i.title)).map((item) => ({ item, feed: f.name })))
+      ? byDate((feeds || []).filter((f) => !f.team && !named(f) && sameSport(f)).flatMap((f) => (f.items || []).filter((i) => re.test(i.title)).map((item) => ({ item, feed: f.name }))))
       : [];
-    return newest(mention);
+    // the team's own feeds first, then headlines that name it; one copy of a headline
+    const out = [];
+    const seen = new Set();
+    for (const x of [...own, ...mention]) {
+      const k = x.item.title.toLowerCase();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(x);
+      if (out.length >= want) break;
+    }
+    return out;
   }
 
   /** The side column's order: the general pages spread evenly through the team pages. */
@@ -937,9 +944,8 @@ table.lg tr.me td.gd { color: #fff; }
       state.key = (store.get("mt:key") || "").trim();
       if (!state.key) return askKey();
     }
-    $("#brand .mark").textContent = state.config.title || "My Teams";
-    $("#ticker .end").textContent = state.config.title || "My Teams";
-    document.title = `${state.config.title || "My Teams"} TV`;
+    $("#brand .mark").textContent = state.config.title || "CMHjem";
+    document.title = `${state.config.title || "CMHjem"} TV`;
     start();
   }
 
@@ -976,9 +982,16 @@ table.lg tr.me td.gd { color: #fff; }
     every(10 * 60e3, async () => { await loadFeeds(); });
     every(30 * 60e3, async () => { await loadTables(); buildPanels(); });
     every(30e3, pollLive);
+    if (state.mode === "server") every(5 * 60e3, checkConfig);
     setInterval(drawNext, 8000);
     setInterval(drawLowerIdle, 9000);
     rotatePanels();
+  }
+
+  /** Teams or feeds changed on the settings page (or in the file): the page starts again with them. */
+  async function checkConfig() {
+    const j = await fetchJson("api/config", null, null);
+    if (j && j.config && JSON.stringify(j.config) !== JSON.stringify(state.config)) location.reload();
   }
 
   function every(ms, fn) {
@@ -1180,7 +1193,7 @@ table.lg tr.me td.gd { color: #fff; }
     showSlate(null, first);
     const muted = params.get("mute") === "1";
     state.player = new YT.Player("player", {
-      width: 1472, height: 828, videoId: first.videoId,
+      width: 1472, height: 1008, videoId: first.videoId, // taller than the picture: see #player in index.html
       playerVars: {
         autoplay: 1, controls: 0, rel: 0, fs: 0, disablekb: 1, iv_load_policy: 3, modestbranding: 1, playsinline: 1,
         cc_load_policy: 0, origin: location.origin, mute: muted ? 1 : 0,
@@ -1365,7 +1378,7 @@ table.lg tr.me td.gd { color: #fff; }
     const res = C.results(allEvents(), now, 10).slice(0, 7);
     const fix = C.fixtures(allEvents(), now).slice(0, 7);
     const row = (e, right) => `<div class="row">${badge(e.strHomeTeamBadge)}${esc(C.scoreLine(e, true))}${badge(e.strAwayTeamBadge)}<small>${esc(right)}</small></div>`;
-    sl.innerHTML = `<div class="eyebrow">${esc(state.config.title || "My Teams")} TV</div>
+    sl.innerHTML = `<div class="eyebrow">${esc(state.config.title || "CMHjem")} TV</div>
       <div class="big">${message ? esc(message) : "Results and fixtures"}</div>
       <div class="board">
         <div><h3>Latest results</h3>${res.map((e) => row(e, C.dayName(C.kickoff(e), now, tz()))).join("") || '<div class="row">None yet</div>'}</div>
@@ -1487,8 +1500,10 @@ table.lg tr.me td.gd { color: #fff; }
     }
     if (pos)
       blocks.push(`<div class="tb"><h4>League</h4><div class="pos"><b>${esc(C.ordinal(pos.rank))}</b><span>${esc(pos.points)} pts &middot; ${esc(pos.played)} played</span></div><div class="s">${esc(pos.league)}${pos.group ? " &middot; " + esc(pos.group) : ""}</div></div>`);
-    if (news)
-      blocks.push(`<div class="tb"><h4>Latest news</h4><div class="news">${esc(news.item.title)}</div><div class="s">${esc(news.feed)}${news.item.date ? " &middot; " + esc(C.ago(news.item.date, now)) : ""}</div></div>`);
+    if (news.length)
+      blocks.push(`<div class="tb"><h4>Latest news</h4>${news
+        .map((n) => `<div class="news">${esc(n.item.title)}</div><div class="s">${esc(n.feed)}${n.item.date ? " &middot; " + esc(C.ago(n.item.date, now)) : ""}</div>`)
+        .join('<div class="gap"></div>')}</div>`);
     if (!blocks.length) blocks.push(`<div class="tb"><div class="none">No games found in the last three weeks or coming up.</div></div>`);
     const logo = info.strBadge ? `<img src="${esc(img(info.strBadge, "small"))}" alt="" onerror="this.style.visibility='hidden'">` : "";
     return `<div class="team-h">${logo}<div><div class="n">${esc(name)}</div><div class="l">${esc(league || info.strSport || "")}</div></div></div>${blocks.join("")}`;
@@ -1571,22 +1586,14 @@ table.lg tr.me td.gd { color: #fff; }
     }
     paneAt = at;
     panes[at].classList.add("on");
-    $("#prog span").textContent = `${at + 1} / ${panes.length}`;
   }
 
-  /** Shows page [i] of the side column for its own time (team pages are shorter), with the bar filling meanwhile. */
+  /** Shows page [i] of the side column for its own time (team pages are shorter). */
   function showPane(i) {
     if (!panes.length) return;
     paneAt = i % panes.length;
     panes.forEach((el, j) => el.classList.toggle("on", j === paneAt));
     const secs = Number(panes[paneAt].dataset.secs) || 15;
-    const bar = $("#prog .bar i");
-    bar.style.transition = "none";
-    bar.style.width = "0";
-    void bar.offsetWidth; // start the fill from empty
-    bar.style.transition = `width ${secs}s linear`;
-    bar.style.width = "100%";
-    $("#prog span").textContent = `${paneAt + 1} / ${panes.length}`;
     clearTimeout(rotTimer);
     rotTimer = setTimeout(() => showPane(paneAt + 1), secs * 1000);
   }
@@ -1613,7 +1620,7 @@ table.lg tr.me td.gd { color: #fff; }
     const run = $("#ticker .run");
     const track = $("#ticker .track");
     if (!items.length) {
-      run.innerHTML = `<span class="tk"><b>${esc(state.config.title || "My Teams")}</b>Scores, fixtures and highlights</span>`;
+      run.innerHTML = `<span class="tk"><b>${esc(state.config.title || "CMHjem")}</b>Scores, fixtures and highlights</span>`;
     } else {
       run.innerHTML = items.map((i) => `<span class="tk ${i.kind}"><b>${esc(i.label)}</b>${esc(i.text)}</span>`).join('<i class="sep"></i>') + '<i class="sep"></i>';
     }

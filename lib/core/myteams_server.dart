@@ -28,7 +28,7 @@ import 'package:http/io_client.dart';
 import 'presets.dart';
 
 const myTeamsPort = 47390;
-const myTeamsName = 'My Teams';
+const myTeamsName = 'CMHjem TV';
 const myTeamsUrl = 'http://127.0.0.1:$myTeamsPort/';
 const _tsdb = 'https://www.thesportsdb.com/api';
 
