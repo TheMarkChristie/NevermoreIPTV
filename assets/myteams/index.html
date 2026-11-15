@@ -92,15 +92,6 @@ body { font-family: var(--font); -webkit-font-smoothing: antialiased; }
 .tb .gap { height: 8px; }
 .tb .none { font-size: 15px; color: var(--p3-muted); font-weight: 500; }
 
-#bug {
-  position: absolute; left: 28px; top: 26px; display: flex; align-items: stretch; height: 54px; border-radius: var(--r-mid); overflow: hidden;
-  font-weight: 800; font-size: 26px; letter-spacing: 0.06em; text-transform: uppercase;
-  box-shadow: 0 10px 26px rgba(0,0,0,0.35); z-index: 3;
-}
-#bug .k { background: var(--p3-red); color: #fff; padding: 0 20px; display: flex; align-items: center; }
-#bug .v { background: rgba(31,32,38,0.88); color: #fff; padding: 0 20px; display: block; line-height: 54px; font-weight: 700; letter-spacing: 0.02em; text-transform: none; max-width: 1000px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#bug .v:empty { display: none; }
-#bug.live .k { animation: pulse 1.6s ease-in-out infinite; }
 @keyframes pulse { 50% { background: var(--p3-red-deep); } }
 
 #sound {
@@ -115,11 +106,11 @@ body { font-family: var(--font); -webkit-font-smoothing: antialiased; }
   background: linear-gradient(180deg, var(--p3-charcoal) 0%, var(--p3-night) 100%);
   box-shadow: 0 12px 30px rgba(0,0,0,0.35); display: flex; flex-direction: column;
 }
-#clock { padding: 22px 26px 12px; border-bottom: 1px solid var(--p3-line); }
+#clock { padding: 10px 26px 12px; border-bottom: 1px solid var(--p3-line); }
 #clock .time { font-size: 62px; font-weight: 800; line-height: 1; letter-spacing: -0.01em; }
 #clock .day { font-size: 22px; font-weight: 600; color: var(--p3-muted); margin-top: 8px; }
 #clock .zones { font-size: 17px; font-weight: 700; color: var(--p3-pink-light); margin-top: 6px; letter-spacing: 0.02em; }
-#brand { display: flex; align-items: center; gap: 0; padding: 12px 26px; }
+#brand { display: flex; align-items: center; gap: 0; padding: 20px 26px 4px; }
 #brand .chip { display: inline-flex; border-radius: var(--r-chip); overflow: hidden; }
 #brand .mark { background: var(--p3-red); color: #fff; font-weight: 900; font-size: 22px; letter-spacing: 0.04em; padding: 6px 12px; }
 #brand .tv { background: #fff; color: var(--p3-charcoal); font-weight: 900; font-size: 22px; letter-spacing: 0.08em; padding: 6px 10px; }
@@ -179,6 +170,10 @@ table.lg tr.me td.gd { color: #fff; }
 #next .count { width: 104px; flex: none; background: var(--p3-red); display: flex; flex-direction: column; align-items: center; justify-content: center; }
 #next .count b { font-size: 44px; font-weight: 900; line-height: 1; }
 #next .count small { font-size: 15px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin-top: 4px; }
+#next.live .count { animation: pulse 1.6s ease-in-out infinite; }
+#next.live .count b { font-size: 30px; letter-spacing: 0.04em; }
+#next.live .count small { font-size: 14px; text-align: center; padding: 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+@keyframes pulse { 50% { background: var(--p3-red-deep); } }
 #next .txt { padding: 12px 16px; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
 #next .head { font-size: 14px; font-weight: 800; color: var(--p3-pink-light); letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #next .game { font-size: 19px; font-weight: 800; line-height: 1.2; margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -215,12 +210,11 @@ table.lg tr.me td.gd { color: #fff; }
   <section id="video" aria-label="Highlights">
     <div id="player"></div>
     <div id="slate"><div class="eyebrow">CMHjem TV</div><div class="big">Getting the scores&hellip;</div><div class="small">Results, fixtures and highlights from TheSportsDB</div></div>
-    <div id="bug"><span class="k">Highlights</span><span class="v"></span></div>
     <div id="sound" hidden>Press OK for sound</div>
   </section>
   <aside id="side">
-    <div id="clock"><div class="time">&nbsp;</div><div class="day">&nbsp;</div><div class="zones">&nbsp;</div></div>
     <div id="brand"><span class="chip"><span class="mark">CMHjem</span><span class="tv">TV</span></span></div>
+    <div id="clock"><div class="time">&nbsp;</div><div class="day">&nbsp;</div><div class="zones">&nbsp;</div></div>
     <div id="panel"></div>
   </aside>
   <div id="lower" aria-live="polite">
@@ -229,7 +223,7 @@ table.lg tr.me td.gd { color: #fff; }
   </div>
   <div id="next"><div class="count"><b>&ndash;</b><small>&nbsp;</small></div><div class="txt"><div class="head">Next up</div><div class="game">&nbsp;</div><div class="sub">&nbsp;</div></div></div>
   <div id="ticker" aria-hidden="true"><div class="track"><div class="run"></div></div></div>
-  <div id="foot"><span>Scores, fixtures &amp; highlights: TheSportsDB &middot; Video: YouTube</span><span class="err"></span></div>
+  <div id="foot"><span class="err"></span></div>
 </div>
 </div>
 <div id="setup" hidden>
@@ -427,6 +421,16 @@ table.lg tr.me td.gd { color: #fff; }
     played.clear();
     const at = ok.findIndex((h) => h.videoId === current);
     return ok[(at + 1) % ok.length];
+  }
+
+  /** The first highlight when the page opens: a random one not played on this screen lately ([recent]: video ids),
+   * so it does not open on the same clip every time; any of them once all have been played. [rand] in [0, 1). */
+  function pickStart(list, recent, rand, skip) {
+    const ok = (list || []).filter((h) => !(skip && skip.has(h.videoId)));
+    if (!ok.length) return null;
+    const fresh = ok.filter((h) => !(recent && recent.has(h.videoId)));
+    const pool = fresh.length ? fresh : ok;
+    return pool[Math.min(pool.length - 1, Math.floor((rand || 0) * pool.length))];
   }
 
   /** A slice of [size] rows from a league table that holds as many tracked teams as it can, the first of them
@@ -783,7 +787,7 @@ table.lg tr.me td.gd { color: #fff; }
     results, fixtures, inPlayWindow, applyLive, highlights, nextHighlight, tableWindow, teamTable, clock, longDay,
     dayName, when, countdown, scoreLine, statusText, decodeEntities, parseFeed, tickerItems,
     ordinal, ago, teamResult, opponent, teamPosition, teamWords, teamNews, interleave,
-    zonesWhen, zonesTimes, zonesClock, tvFromTsdb, tvLine,
+    zonesWhen, zonesTimes, zonesClock, tvFromTsdb, tvLine, pickStart,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = Core;
   else root.Core = Core;
@@ -1183,9 +1187,26 @@ table.lg tr.me td.gd { color: #fff; }
     document.head.appendChild(s);
   }
 
+  /** The clips this screen played in the last 12 hours (kept in the browser; none in a private window or a fresh
+   * WebView, which is fine: the start is random anyway). */
+  function recentlyPlayed() {
+    const kept = cached("played", 12 * 3600e3);
+    const now = Date.now();
+    return new Set(Object.entries(kept || {}).filter(([, t]) => now - t < 12 * 3600e3).map(([id]) => id));
+  }
+  function rememberPlayed(id) {
+    const now = Date.now();
+    const kept = Object.fromEntries(Object.entries(cached("played", 12 * 3600e3) || {}).filter(([, t]) => now - t < 12 * 3600e3));
+    kept[id] = now;
+    keep("played", kept);
+  }
+
   let watchdog = null;
   function makePlayer() {
-    const first = C.nextHighlight(state.hl, state.played, null, state.skip);
+    // not the same clip every time the page opens: a random one this screen has not played in the last 12 hours
+    const recent = recentlyPlayed();
+    for (const id of recent) state.played.add(id);
+    const first = C.pickStart(state.hl, recent, Math.random(), state.skip) || C.nextHighlight(state.hl, state.played, null, state.skip);
     if (!first) return showSlate();
     state.current = first;
     state.history.push(first);
@@ -1212,6 +1233,7 @@ table.lg tr.me td.gd { color: #fff; }
             try { ev.target.unloadModule("captions"); ev.target.unloadModule("cc"); } catch (_) { /* none */ }
             if (state.current) {
               state.played.add(state.current.videoId);
+              rememberPlayed(state.current.videoId);
               drawLowerVideo(state.current);
             }
             hideSlate();
@@ -1334,7 +1356,6 @@ table.lg tr.me td.gd { color: #fff; }
 
   function drawAll() {
     rebuildHighlights();
-    drawBug();
     drawNext(true);
     drawLowerIdle();
     buildPanels();
@@ -1343,24 +1364,6 @@ table.lg tr.me td.gd { color: #fff; }
 
   function liveGames() {
     return C.fixtures(allEvents(), new Date()).filter((e) => state.live.has(String(e.idEvent)) && C.isLive(e));
-  }
-
-  function drawBug() {
-    const bug = $("#bug");
-    const live = liveGames();
-    if (live.length) {
-      bug.className = "live";
-      $(".k", bug).textContent = "Live";
-      $(".v", bug).textContent = live.length === 1 ? `${C.scoreLine(live[0], true)} ${C.statusText(live[0])}` : `${live.length} games`;
-    } else if (state.fullTime && state.fullTime.until > Date.now()) {
-      bug.className = "";
-      $(".k", bug).textContent = "Full time";
-      $(".v", bug).textContent = C.scoreLine(state.fullTime.event, true);
-    } else {
-      bug.className = "";
-      $(".k", bug).textContent = "Highlights";
-      $(".v", bug).textContent = "";
-    }
   }
 
   function showSlate(message, upcoming) {
@@ -1435,11 +1438,29 @@ table.lg tr.me td.gd { color: #fff; }
   }
 
   let nextAt = 0;
+  /** The bottom-right box: a game being played (or just finished) when there is one - its score lives here, off the
+   * picture, where it covered the clip's own score - else the next fixtures with a countdown. */
   function drawNext(reset) {
     const now = new Date();
-    const list = C.fixtures(allEvents(), now).filter((e) => !(state.live.has(String(e.idEvent)) && C.isLive(e))).slice(0, 6);
-    if (reset) nextAt = 0;
     const box = $("#next");
+    if (reset) nextAt = 0;
+    const live = liveGames();
+    const ft = state.fullTime && state.fullTime.until > Date.now() ? state.fullTime.event : null;
+    if (live.length || ft) {
+      const games = live.length ? live : [ft];
+      const i = nextAt++ % games.length;
+      const g = games[i];
+      box.classList.add("live");
+      $(".count b", box).textContent = live.length ? "LIVE" : "FT";
+      $(".count small", box).textContent = live.length ? C.statusText(g) : "Full time";
+      $(".head", box).textContent = `${live.length ? (games.length > 1 ? `Live ${i + 1} of ${games.length}` : "Live now") : "Full time"} \u00b7 ${C.shortLeague(g.strLeague)}`;
+      $(".game", box).textContent = C.scoreLine(g, true);
+      const tv = tvText(g);
+      $(".sub", box).textContent = tv ? `TV: ${tv}` : g.strVenue || "";
+      return;
+    }
+    box.classList.remove("live");
+    const list = C.fixtures(allEvents(), now).filter((e) => !(state.live.has(String(e.idEvent)) && C.isLive(e))).slice(0, 6);
     if (!list.length) {
       $(".count b", box).textContent = "–";
       $(".count small", box).textContent = "";
