@@ -160,8 +160,16 @@ Future<List<Preset>> loadPresets() async => presetsFromJson(await _houseFile());
 /// The web sites built into this copy of the app; none without the file.
 Future<List<WebSite>> loadSites() async => sitesFromJson(await _houseFile());
 
-/// The Web category's guide built into this copy of the app; empty without one.
-Future<String> loadWebGuide() async => webGuideFromJson(await _houseFile());
+/// The house's guide for the Web category's sites (the Scotland Home Assistant's, four channels in hourly blocks),
+/// built in (Mark, 21 Nov 2026: "can you add that in as a constant"); a house file's "web_guide" takes its place
+/// when it names one. Only read when there is a Web category to read it for.
+const webGuideUrl = 'https://sco.cmhjem.com/myteams/guide.xml';
+
+/// The Web category's guide: the house file's, else the built-in address.
+Future<String> loadWebGuide() async {
+  final own = webGuideFromJson(await _houseFile());
+  return own.isNotEmpty ? own : webGuideUrl;
+}
 
 /// The My Teams channel's setup from the house file: "myteams": {"key": "(TheSportsDB key)", "config": {teams, feeds,
 /// options}} (MyTeamsTV's config.json; myteams_server.dart serves the page with it). The key travels in the
