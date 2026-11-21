@@ -116,6 +116,13 @@ List<WebSite> sitesFromJson(Object? data) => [
         ),
 ];
 
+/// The guide for the Web category's sites: the house file's "web_guide" (an XMLTV address, e.g. the guide a house's Home
+/// Assistant hosts at /myteams/guide.xml); empty when it names none or not a web address.
+String webGuideFromJson(Object? data) {
+  final url = data is Map ? '${data['web_guide'] ?? ''}'.trim() : '';
+  return Uri.tryParse(url)?.scheme.startsWith('http') == true ? url : '';
+}
+
 Future<Object?>? _houseMemo;
 
 /// The house file: the one built into this copy, kept in the app's own folder once seen, so a copy built without it
@@ -152,6 +159,9 @@ Future<List<Preset>> loadPresets() async => presetsFromJson(await _houseFile());
 
 /// The web sites built into this copy of the app; none without the file.
 Future<List<WebSite>> loadSites() async => sitesFromJson(await _houseFile());
+
+/// The Web category's guide built into this copy of the app; empty without one.
+Future<String> loadWebGuide() async => webGuideFromJson(await _houseFile());
 
 /// The My Teams channel's setup from the house file: "myteams": {"key": "(TheSportsDB key)", "config": {teams, feeds,
 /// options}} (MyTeamsTV's config.json; myteams_server.dart serves the page with it). The key travels in the

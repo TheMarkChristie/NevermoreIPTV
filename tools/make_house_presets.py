@@ -14,6 +14,8 @@ The list (kept out of the repository) holds:
     - GROUP: word; word         each channel of the provider group whose name holds one of the words
     - GROUP: all                the whole group
     - GROUP -> Name: ...        the group shown on the TV as Name
+    Web guide: <url>            an XMLTV guide for the Web category's sites (matched by host or name), e.g. the one a
+                                house's Home Assistant hosts at /myteams/guide.xml
     ## Web
     - Name: https://...         a site for the guide's Web category
 
@@ -43,8 +45,8 @@ def read_env(path):
 
 
 def read_list(path):
-    """(code, source name, guides, groups, sites, (My Teams config path, My Teams address)) from the list."""
-    code = source = myteams = myteams_url = None
+    """(code, source name, guides, groups, sites, (My Teams config path, My Teams address), Web guide) from the list."""
+    code = source = myteams = myteams_url = web_guide = None
     guides = []
     groups, sites = [], []
     section = None
@@ -59,6 +61,8 @@ def read_list(path):
             source = line.split(":", 1)[1].strip()
         elif line.lower().startswith("my teams address:"):
             myteams_url = line.split(":", 1)[1].strip()
+        elif line.lower().startswith("web guide:"):
+            web_guide = line.split(":", 1)[1].strip()
         elif line.lower().startswith("my teams:"):
             myteams = line.split(":", 1)[1].strip()
         elif line.lower().startswith("guides:"):
@@ -83,7 +87,7 @@ def read_list(path):
                 sites.append({"name": m.group(1).strip(), "url": m.group(2)})
     if not code or not source:
         sys.exit("the list needs a Code: and a Source: line")
-    return code, source, guides, groups, sites, (myteams, myteams_url)
+    return code, source, guides, groups, sites, (myteams, myteams_url), web_guide
 
 
 def provider_call(base, user, password, action):
@@ -149,7 +153,7 @@ def main():
     args.add_argument("--check", action="store_true")
     args.add_argument("--out", default=str(pathlib.Path(__file__).resolve().parent.parent / "assets/house/presets.json"))
     a = args.parse_args()
-    code, source, guides, groups, sites, (myteams, myteams_url) = read_list(a.list)
+    code, source, guides, groups, sites, (myteams, myteams_url), web_guide = read_list(a.list)
     env = read_env(a.env)
     # no plain code in the file: the login is locked with it (Mark, 27 Oct 2026: "i want to ship it with this")
     preset = {"name": source, "server": env["IPTV_XTREAM_URL"], "groups": groups}
@@ -157,6 +161,8 @@ def main():
         preset["guides"] = guides
     preset["lock"] = lock_login(code, env["IPTV_XTREAM_USERNAME"], env["IPTV_XTREAM_PASSWORD"])
     house = {"presets": [preset], "sites": sites}
+    if web_guide:
+        house["web_guide"] = web_guide
     if myteams:
         # the key travels plain in the house file: Mark is the app's only user (15 Nov 2026: "im the only person to
         # use the app so it can carry"); lib/core/myteams_server.dart keeps it off the page itself
@@ -170,7 +176,8 @@ def main():
     out = pathlib.Path(a.out)
     out.write_text(json.dumps(house, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     teams = len(house.get("myteams", {}).get("config", {}).get("teams", []))
-    print(f"wrote {out}: {len(groups)} groups, {len(sites)} sites" + (f", My Teams ({teams} teams)" if myteams else ""))
+    print(f"wrote {out}: {len(groups)} groups, {len(sites)} sites" + (", their guide" if web_guide else "")
+          + (f", My Teams ({teams} teams)" if myteams else ""))
     if a.check:
         check(env, groups)
 

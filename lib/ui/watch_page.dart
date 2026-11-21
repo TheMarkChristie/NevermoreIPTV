@@ -133,6 +133,14 @@ class _WatchPageState extends State<WatchPage> {
           _web = webCategory(sites, library.siteIcons);
           _mergeCategories();
         });
+        // the sites' guide: the house file's, matched by each site's host or name (Mark, 21 Nov 2026); not awaited,
+        // so the switch-on never waits for it
+        final web = _web!;
+        unawaited(
+          loadWebGuide().then((guide) {
+            if (guide.isNotEmpty) library.setWebGuide([for (final ch in web.channels) ch.channel], guide);
+          }),
+        );
       }
     } finally {
       // found or not, the switch-on can go on

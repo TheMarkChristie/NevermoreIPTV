@@ -18,6 +18,7 @@ import 'offthread.dart';
 import 'reasons.dart';
 import 'show_search.dart';
 import 'sources.dart';
+import 'web.dart';
 import 'xtream.dart';
 
 const userAgent = 'Mozilla/5.0';
@@ -132,6 +133,11 @@ class Library extends ChangeNotifier {
   /// epgshare01 country files ticked in Settings > Guide.
   Set<String> epg = {...defaultEpgCountries};
   List<GuideFile> guideFiles = [];
+
+  /// The guide's Web category's sites (set by the watch page) and the guide the house file names for them, read like
+  /// any other guide file after the rest (21 Nov 2026).
+  List<Channel> webChannels = const [];
+  String webGuideUrl = '';
 
   /// Channel uid -> (index into [_matchLabels], guide channel id, how).
   Map<String, (int, String, String)> guideMatches = {};
@@ -783,6 +789,7 @@ class Library extends ChangeNotifier {
     for (final code in epgCountries.keys) {
       if (epg.contains(code)) add('epgshare01 ${epgFileFor(code)}', epgshareUrl(code));
     }
+    if (webChannels.isNotEmpty) add('Web guide', webGuideUrl);
     for (final f in out) {
       if (f.downloadedAt != null) continue;
       final file = File(f.path);
@@ -858,6 +865,16 @@ class Library extends ChangeNotifier {
     }
   }
 
+  /// The Web category's sites and their guide (the house file's "web_guide"): fetched and read with the rest when
+  /// either changes.
+  void setWebGuide(List<Channel> channels, String url) {
+    String sig(List<Channel> list) => [for (final c in list) '${c.key}|${c.name}|${c.guideId}'].join('\n');
+    if (url == webGuideUrl && sig(channels) == sig(webChannels)) return;
+    webChannels = channels;
+    webGuideUrl = url;
+    unawaited(refreshGuide());
+  }
+
   /// After the selection changes: read the guide again for the new channels, once the changes settle.
   void scheduleGuideRebuild() {
     _rebuildTimer?.cancel();
@@ -873,6 +890,7 @@ class Library extends ChangeNotifier {
       for (final s in sources)
         if (catalogs[s.id] != null)
           GuideChannels(s.id, shownChannels(catalogs[s.id]!, selectionOf(s.id)), selectionOf(s.id)),
+      if (webChannels.isNotEmpty) GuideChannels(webSourceId, webChannels, Selection()),
     ];
     final build = await buildGuide([for (final f in files) (f.label, f.path)], input, nowSeconds());
     for (var i = 0; i < files.length; i++) {

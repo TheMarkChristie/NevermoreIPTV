@@ -346,8 +346,8 @@ class _GuideViewState extends State<GuideView> {
     if (ch == null) return;
     final p = _grid.cell?.programme;
     final now = nowSeconds();
-    if (p == null || (p.start <= now && now < p.stop) || p.stop <= now) {
-      widget.onPlay(ch, _categoryName);
+    if (isWeb(ch) || p == null || (p.start <= now && now < p.stop) || p.stop <= now) {
+      widget.onPlay(ch, _categoryName); // a site has one programme name all day: OK opens it, never a later show
     } else {
       unawaited(_details(ch, p));
     }
@@ -558,6 +558,7 @@ class _GuideViewState extends State<GuideView> {
           Text(Uri.tryParse(ch.channel.url ?? '')?.host ?? '', style: text.bodyMedium?.copyWith(color: tvMuted)),
           const SizedBox(height: 2),
           Text(ch.name, style: text.titleLarge, maxLines: 1, overflow: TextOverflow.ellipsis),
+          if (_grid.cell?.programme case final p?) Text(p.title, maxLines: 1, overflow: TextOverflow.ellipsis),
           Text(
             'OK opens it in the browser, where you left it  -  hold OK: from the start.',
             style: text.bodySmall?.copyWith(color: tvMuted),

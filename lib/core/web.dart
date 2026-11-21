@@ -26,6 +26,14 @@ const iconUserAgent =
 
 bool isWeb(PlayableChannel ch) => ch.source.id == webSourceId;
 
+/// A site's id in a guide: its address's host without "www." (tv.example.com), as the house's guide names it
+/// (MyTeamsTV guide.py); null for an address without a host. The guide's display names match the sites' names too.
+String? siteGuideId(String url) {
+  final host = (Uri.tryParse(url)?.host ?? '').toLowerCase();
+  if (host.isEmpty) return null;
+  return host.startsWith('www.') ? host.substring(4) : host;
+}
+
 /// Whether [url] is a page of [site] itself (the same host, "www." aside): the page a site reopens at is one of its
 /// own, not a sign-in made elsewhere or a sponsor's link.
 bool onSite(String site, String url) {
@@ -89,7 +97,7 @@ Category? webCategory(List<WebSite> sites, Map<String, String> icons) {
     for (final (i, s) in sites.indexed)
       PlayableChannel(
         source,
-        Channel(s.url, s.name, webSourceId, i, logo: icons[s.url], url: s.url),
+        Channel(s.url, s.name, webSourceId, i, logo: icons[s.url], url: s.url, guideId: siteGuideId(s.url)),
         s.name,
         webCategoryName,
       ),
