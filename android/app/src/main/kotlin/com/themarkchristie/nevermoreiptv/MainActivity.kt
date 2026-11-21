@@ -224,6 +224,8 @@ class MainActivity : FlutterActivity() {
         // clear another's hold
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "nevermore/screen").setMethodCallHandler { call, result ->
             when (call.method) {
+                // a TV (Google TV, Android TV): the pages shown as channels keep their touch buttons off it
+                "leanback" -> result.success(packageManager.hasSystemFeature("android.software.leanback"))
                 "awake" -> {
                     val args = call.arguments
                     val who = if (args is Map<*, *>) args["who"]?.toString() ?: "play" else "play"

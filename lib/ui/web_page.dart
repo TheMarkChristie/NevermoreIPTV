@@ -22,9 +22,13 @@
 /// highlight (Mark, 7 Nov 2026: "Does it also allow me the web streams as well" - yes, multi site).
 ///
 /// A page shown as a channel (My Teams, 0.99.9997; Mark, 21 Nov 2026: "I cannot press anything in the app now to get
-/// to the menus or epg") takes a channel's keys instead of the pointer's: OK opens the guide, Up and Down change
-/// channel, Back brings the TV, and a held OK brings the pointer for the page itself (Back puts the channel keys
-/// back). The page says how it was left ([WebLeave]) and the watch page acts on it.
+/// to the menus or epg") takes a channel's keys instead of the pointer's, the page asked first (0.99.9998; Mark:
+/// "Does the 3 presses skip and long hold show all? this needs to work on both versions"): every key is handed to
+/// the page as a browser would send it, so OK is the page's (five presses within four seconds: the next game; held:
+/// all of them), the arrows are its while its picker is open and Back closes the picker; a key the page leaves
+/// alone is the channel's - Up and Down the channels, Left and Right the guide, Back the TV. On a phone the page
+/// has its taps and holds already, and three buttons at the right edge for the channels and the guide. The page
+/// says how it was left ([WebLeave]) and the watch page acts on it.
 library;
 
 import 'dart:async';
@@ -520,8 +524,9 @@ class WebPage extends StatefulWidget {
   /// The site it belongs to (the house file's address), under which its last page is kept.
   final String site;
 
-  /// The page is a channel (My Teams): the keys are a channel's - OK the guide, Up and Down the channels, Back the
-  /// TV - and a held OK brings the pointer for the page itself. The page pops with a [WebLeave].
+  /// The page is a channel (My Teams): the keys go to the page first, as a browser would send them, and the ones it
+  /// leaves alone are a channel's - Up and Down the channels, Left and Right the guide, Back the TV. The page pops
+  /// with a [WebLeave].
   final bool channelKeys;
 
   @override
@@ -531,87 +536,129 @@ class WebPage extends StatefulWidget {
 class _WebPageState extends State<WebPage> {
   static const _screen = MethodChannel('nevermore/screen');
 
+  /// A key handed to the page as a browser would send it (the page was written for a remote in a browser): true when
+  /// the page took it (preventDefault), false when it left it alone.
+  static const _keyJs =
+      "(function(t,k,r){var e=new KeyboardEvent(t,{key:k,bubbles:true,cancelable:true,repeat:r});"
+      "return !document.dispatchEvent(e);})";
+
   late final SiteSession _session = SiteSession(name: widget.name, site: widget.site, url: widget.url);
   bool _hint = true;
   Timer? _hintTimer;
   bool _leaveHint = false;
   Timer? _leaveTimer;
 
-  /// The channel keys (channelKeys): this node has them; the pointer's surface is inactive until a held OK.
+  /// The channel keys (channelKeys): this node has them; the pointer's surface is out of it.
   final _keys = FocusNode(debugLabel: 'channel keys');
-  bool _pointer = false;
-  bool _okHeld = false;
-  bool _okLong = false;
+
+  /// Whether this is a TV (Android's leanback feature): then no touch buttons on the page, its panel stays clear.
+  static Future<bool>? _tv;
+  bool _touch = false;
 
   @override
   void initState() {
     super.initState();
     unawaited(_screen.invokeMethod<void>('awake', {'who': 'web', 'on': true}).catchError((_) {}));
-    _showHint();
+    if (widget.channelKeys) {
+      _tv ??= _screen.invokeMethod<bool>('leanback').then((v) => v ?? false).catchError((_) => false);
+      unawaited(
+        _tv!.then((tv) {
+          if (mounted && !tv) setState(() => _touch = true);
+        }),
+      );
+    }
+    _hintTimer = Timer(const Duration(seconds: 8), () {
+      if (mounted) setState(() => _hint = false);
+    });
   }
 
-  void _showHint() {
+  @override
+  void dispose() {
+    _keys.dispose();
     _hintTimer?.cancel();
-    setState(() => _hint = true);
-    _hintTimer = Timer(const Duration(seconds: 6), () {
-      if (mounted) setState(() => _hint = false);
+    _leaveTimer?.cancel();
+    _session.dispose();
+    unawaited(_screen.invokeMethod<void>('awake', {'who': 'web', 'on': false}).catchError((_) {}));
+    super.dispose();
+  }
+
+  void _pageBack() {
+    _leaveTimer?.cancel();
+    if (mounted) setState(() => _leaveHint = true);
+    _leaveTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _leaveHint = false);
     });
   }
 
   String get _hintText {
     if (_leaveHint) return 'Back again to leave ${widget.name}';
     if (!widget.channelKeys) return 'Arrows move the pointer  -  OK clicks  -  hold OK: your phone  -  Back goes back';
-    return _pointer
-        ? 'The pointer: arrows move it, OK clicks the page  -  Back: the channel keys again'
-        : 'OK: the guide  -  Up / Down: the channels  -  hold OK: the pointer  -  Back: the TV';
+    return 'OK: the page (five presses: the next game, held: all of them)  -  Left / Right: the guide  -  '
+        'Up / Down: the channels  -  Back: the TV';
   }
 
   void _leave(WebLeave how) {
     if (mounted) Navigator.of(context).pop(how);
   }
 
-  /// The pointer up (a held OK) or down again (Back): the page's own surface takes or gives up the keys.
-  void _setPointer(bool on) {
-    setState(() => _pointer = on);
-    _showHint();
-    if (!on) _keys.requestFocus();
+  Future<bool> _pageTakes(String type, String key, {bool repeat = false}) async =>
+      await _session.run(_keyJs, [type, key, repeat]) == 'true';
+
+  /// Back: the page first (Escape closes its picker), else the TV.
+  Future<void> _backOut() async {
+    if (widget.channelKeys && await _pageTakes('keydown', 'Escape')) return;
+    _leave(WebLeave.back);
   }
 
-  /// A channel's keys: OK the guide (held: the pointer), Up and Down the channels; the rest is nobody's.
+  /// A channel's keys, the page asked first: OK is the page's (its presses and holds), the arrows are its while its
+  /// picker is open; left alone, Up and Down are the channels and Left and Right the guide (and OK too, when the page
+  /// is not there to take it). Channel up / down are the channels outright.
   KeyEventResult _channelKey(FocusNode node, KeyEvent event) {
-    if (!widget.channelKeys || _pointer) return KeyEventResult.ignored;
+    if (!widget.channelKeys) return KeyEventResult.ignored;
     final k = event.logicalKey;
-    final select =
-        k == LogicalKeyboardKey.select || k == LogicalKeyboardKey.enter || k == LogicalKeyboardKey.gameButtonA;
-    if (select) {
-      // on the way up, so a held OK (its repeats) brings the pointer once and a short OK the guide
-      if (event is KeyDownEvent) {
-        _okHeld = true;
-        _okLong = false;
-      } else if (event is KeyRepeatEvent && _okHeld) {
-        _okLong = true;
-      } else if (event is KeyUpEvent && _okHeld) {
-        final held = _okLong;
-        _okHeld = false;
-        _okLong = false;
-        if (held) {
-          _setPointer(true);
-        } else {
-          _leave(WebLeave.guide);
-        }
-      }
+    if (k == LogicalKeyboardKey.channelUp || k == LogicalKeyboardKey.pageUp) {
+      if (event is KeyDownEvent) _leave(WebLeave.up);
       return KeyEventResult.handled;
     }
-    if (event is! KeyDownEvent) return KeyEventResult.ignored;
-    if (k == LogicalKeyboardKey.arrowUp || k == LogicalKeyboardKey.channelUp || k == LogicalKeyboardKey.pageUp) {
-      _leave(WebLeave.up);
+    if (k == LogicalKeyboardKey.channelDown || k == LogicalKeyboardKey.pageDown) {
+      if (event is KeyDownEvent) _leave(WebLeave.down);
       return KeyEventResult.handled;
     }
-    if (k == LogicalKeyboardKey.arrowDown || k == LogicalKeyboardKey.channelDown || k == LogicalKeyboardKey.pageDown) {
-      _leave(WebLeave.down);
-      return KeyEventResult.handled;
+    final name = switch (k) {
+      LogicalKeyboardKey.select || LogicalKeyboardKey.enter || LogicalKeyboardKey.gameButtonA => 'Enter',
+      LogicalKeyboardKey.arrowUp => 'ArrowUp',
+      LogicalKeyboardKey.arrowDown => 'ArrowDown',
+      LogicalKeyboardKey.arrowLeft => 'ArrowLeft',
+      LogicalKeyboardKey.arrowRight => 'ArrowRight',
+      _ => null,
+    };
+    if (name == null) return KeyEventResult.ignored;
+    unawaited(_forward(event is KeyUpEvent ? 'keyup' : 'keydown', name, event is KeyRepeatEvent));
+    return KeyEventResult.handled;
+  }
+
+  /// Whether the page's picker is open: then the arrows are its; outside it, Left and Right are the guide's even
+  /// though the page would take them (its own Left and Right only repeat what a burst of three does).
+  Future<bool> _pickerOpen() async =>
+      await _session.run("(function(){var p=document.getElementById('picker');return !!p&&!p.hidden;})", []) == 'true';
+
+  Future<void> _forward(String type, String name, bool repeat) async {
+    if ((name == 'ArrowLeft' || name == 'ArrowRight') && type == 'keydown' && !repeat && !await _pickerOpen()) {
+      if (mounted) _leave(WebLeave.guide);
+      return;
     }
-    return KeyEventResult.ignored;
+    final took = await _pageTakes(type, name, repeat: repeat);
+    debugPrint('web key: $type $name${repeat ? ' (repeat)' : ''} - ${took ? 'the page took it' : 'left alone'}');
+    if (took || !mounted || type != 'keydown' || repeat) return;
+    // the page left it alone (or is not there to take it): the channel's keys
+    switch (name) {
+      case 'ArrowUp':
+        _leave(WebLeave.up);
+      case 'ArrowDown':
+        _leave(WebLeave.down);
+      case 'ArrowLeft' || 'ArrowRight' || 'Enter':
+        _leave(WebLeave.guide);
+    }
   }
 
   /// A round translucent button for a finger (not for the remote: no focus).
@@ -637,24 +684,6 @@ class _WebPageState extends State<WebPage> {
   }
 
   @override
-  void dispose() {
-    _keys.dispose();
-    _hintTimer?.cancel();
-    _leaveTimer?.cancel();
-    _session.dispose();
-    unawaited(_screen.invokeMethod<void>('awake', {'who': 'web', 'on': false}).catchError((_) {}));
-    super.dispose();
-  }
-
-  void _pageBack() {
-    _leaveTimer?.cancel();
-    if (mounted) setState(() => _leaveHint = true);
-    _leaveTimer = Timer(const Duration(seconds: 2), () {
-      if (mounted) setState(() => _leaveHint = false);
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final margin = overscanOf(context);
@@ -675,26 +704,20 @@ class _WebPageState extends State<WebPage> {
               skipTraversal: true,
               descendantsAreTraversable: false,
               onFocusChange: (has) {
-                if (has && channel && !_pointer) _keys.requestFocus();
+                if (has && channel) _keys.requestFocus();
               },
               child: SiteView(
                 session: _session,
-                active: !channel || _pointer,
+                active: !channel,
                 backLeaves: channel,
-                onLeave: () {
-                  if (channel && _pointer) {
-                    _setPointer(false);
-                  } else if (mounted) {
-                    Navigator.of(context).pop(WebLeave.back);
-                  }
-                },
+                onLeave: () => unawaited(_backOut()),
                 onPageBack: _pageBack,
                 onHold: () => unawaited(phoneDialog(context, _session)),
               ),
             ),
-            // by touch (a phone or tablet has no remote, and the page keeps its own taps): channel up, the guide,
-            // channel down, at the right edge; nothing the remote's focus can land on
-            if (channel)
+            // by touch (a phone or tablet has no remote, and the page keeps its own taps and holds): channel up, the
+            // guide, channel down, at the right edge; not on a TV, where they would sit on the page's panel
+            if (channel && _touch)
               Positioned(
                 right: 12,
                 top: 0,
