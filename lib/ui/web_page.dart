@@ -551,9 +551,25 @@ class _WebPageState extends State<WebPage> {
   /// The channel keys (channelKeys): this node has them; the pointer's surface is out of it.
   final _keys = FocusNode(debugLabel: 'channel keys');
 
-  /// Whether this is a TV (Android's leanback feature): then no touch buttons on the page, its panel stays clear.
+  /// Whether this is a TV (Android's leanback or television feature): then no touch buttons on the page, its panel
+  /// stays clear.
   static Future<bool>? _tv;
   bool _touch = false;
+
+  /// The touch buttons show on a touch and go 5 s after the last one (Mark, 21 Nov 2026: "The menu on the screen for up
+  /// down and select seems to stay there the while time in web mode": a box that does not say it is a TV kept them
+  /// up for good, over the page); a remote never brings them up.
+  bool _panel = false;
+  Timer? _panelTimer;
+
+  void _touched() {
+    if (!_touch) return;
+    _panelTimer?.cancel();
+    if (!_panel) setState(() => _panel = true);
+    _panelTimer = Timer(const Duration(seconds: 5), () {
+      if (mounted) setState(() => _panel = false);
+    });
+  }
 
   @override
   void initState() {
@@ -576,6 +592,7 @@ class _WebPageState extends State<WebPage> {
   void dispose() {
     _keys.dispose();
     _hintTimer?.cancel();
+    _panelTimer?.cancel();
     _leaveTimer?.cancel();
     _session.dispose();
     unawaited(_screen.invokeMethod<void>('awake', {'who': 'web', 'on': false}).catchError((_) {}));
@@ -593,7 +610,7 @@ class _WebPageState extends State<WebPage> {
   String get _hintText {
     if (_leaveHint) return 'Back again to leave ${widget.name}';
     if (!widget.channelKeys) return 'Arrows move the pointer  -  OK clicks  -  hold OK: your phone  -  Back goes back';
-    return 'OK: the page (five presses: the next game, held: all of them)  -  Left / Right: the guide  -  '
+    return 'OK: the page (three presses: the next game, five or held: all of them)  -  Left / Right: the guide  -  '
         'Up / Down: the channels  -  Back: the TV';
   }
 
@@ -615,6 +632,11 @@ class _WebPageState extends State<WebPage> {
   /// is not there to take it). Channel up / down are the channels outright.
   KeyEventResult _channelKey(FocusNode node, KeyEvent event) {
     if (!widget.channelKeys) return KeyEventResult.ignored;
+    if (event is KeyDownEvent && _hint) {
+      // the help line goes at the first press: the remote is in hand
+      _hintTimer?.cancel();
+      setState(() => _hint = false);
+    }
     final k = event.logicalKey;
     if (k == LogicalKeyboardKey.channelUp || k == LogicalKeyboardKey.pageUp) {
       if (event is KeyDownEvent) _leave(WebLeave.up);
@@ -695,65 +717,70 @@ class _WebPageState extends State<WebPage> {
         autofocus: channel,
         canRequestFocus: channel,
         onKeyEvent: _channelKey,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            // the page's own view takes Android's focus as it pleases (a page that focuses a box, say), and the
-            // keys with it; with the channel keys it is sent away again at once, as the full-screen video is
-            Focus(
-              skipTraversal: true,
-              descendantsAreTraversable: false,
-              onFocusChange: (has) {
-                if (has && channel) _keys.requestFocus();
-              },
-              child: SiteView(
-                session: _session,
-                active: !channel,
-                backLeaves: channel,
-                onLeave: () => unawaited(_backOut()),
-                onPageBack: _pageBack,
-                onHold: () => unawaited(phoneDialog(context, _session)),
-              ),
-            ),
-            // by touch (a phone or tablet has no remote, and the page keeps its own taps and holds): channel up, the
-            // guide, channel down, at the right edge; not on a TV, where they would sit on the page's panel
-            if (channel && _touch)
-              Positioned(
-                right: 12,
-                top: 0,
-                bottom: 0,
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _touchButton(Icons.keyboard_arrow_up, 'Channel up', () => _leave(WebLeave.up)),
-                      const SizedBox(height: 10),
-                      _touchButton(Icons.list, 'The guide', () => _leave(WebLeave.guide)),
-                      const SizedBox(height: 10),
-                      _touchButton(Icons.keyboard_arrow_down, 'Channel down', () => _leave(WebLeave.down)),
-                    ],
-                  ),
+        // a finger anywhere (the page's own taps go on to it as before) brings up the touch buttons for a while
+        child: Listener(
+          behavior: HitTestBehavior.translucent,
+          onPointerDown: (_) => _touched(),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // the page's own view takes Android's focus as it pleases (a page that focuses a box, say), and the
+              // keys with it; with the channel keys it is sent away again at once, as the full-screen video is
+              Focus(
+                skipTraversal: true,
+                descendantsAreTraversable: false,
+                onFocusChange: (has) {
+                  if (has && channel) _keys.requestFocus();
+                },
+                child: SiteView(
+                  session: _session,
+                  active: !channel,
+                  backLeaves: channel,
+                  onLeave: () => unawaited(_backOut()),
+                  onPageBack: _pageBack,
+                  onHold: () => unawaited(phoneDialog(context, _session)),
                 ),
               ),
-            if (_hint || _leaveHint)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: margin.bottom,
-                child: IgnorePointer(
+              // by touch (a phone or tablet has no remote, and the page keeps its own taps and holds): channel up, the
+              // guide, channel down, at the right edge; not on a TV, where they would sit on the page's panel
+              if (channel && _touch && _panel)
+                Positioned(
+                  right: 12,
+                  top: 0,
+                  bottom: 0,
                   child: Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: tvBackground.withAlpha(225),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(_hintText, style: text.bodyMedium),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _touchButton(Icons.keyboard_arrow_up, 'Channel up', () => _leave(WebLeave.up)),
+                        const SizedBox(height: 10),
+                        _touchButton(Icons.list, 'The guide', () => _leave(WebLeave.guide)),
+                        const SizedBox(height: 10),
+                        _touchButton(Icons.keyboard_arrow_down, 'Channel down', () => _leave(WebLeave.down)),
+                      ],
                     ),
                   ),
                 ),
-              ),
-          ],
+              if (_hint || _leaveHint)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: margin.bottom,
+                  child: IgnorePointer(
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: tvBackground.withAlpha(225),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(_hintText, style: text.bodyMedium),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
