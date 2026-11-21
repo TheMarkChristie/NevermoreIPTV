@@ -20,6 +20,11 @@
 /// Since 0.9.0 a site's behaviour lives in [SiteSession] and its picture in [SiteView], so a box of the four screens
 /// (quad_page.dart) can hold a site too, several at once, each in a WebView of its own, the sound following the
 /// highlight (Mark, 7 Nov 2026: "Does it also allow me the web streams as well" - yes, multi site).
+///
+/// A page shown as a channel (My Teams, 0.99.9997; Mark, 21 Nov 2026: "I cannot press anything in the app now to get
+/// to the menus or epg") takes a channel's keys instead of the pointer's: OK opens the guide, Up and Down change
+/// channel, Back brings the TV, and a held OK brings the pointer for the page itself (Back puts the channel keys
+/// back). The page says how it was left ([WebLeave]) and the watch page acts on it.
 library;
 
 import 'dart:async';
@@ -342,11 +347,12 @@ class SiteView extends StatefulWidget {
     this.onHold,
     this.active = true,
     this.boxed = false,
+    this.backLeaves = false,
   });
 
   final SiteSession session;
 
-  /// Back with nothing to go back to (or a second Back within two seconds).
+  /// Back with nothing to go back to (or a second Back within two seconds; at once with [backLeaves]).
   final VoidCallback onLeave;
 
   /// Back went back a page (the browser page shows "Back again to leave").
@@ -356,6 +362,9 @@ class SiteView extends StatefulWidget {
   final VoidCallback? onHold;
   final bool active;
   final bool boxed;
+
+  /// Back leaves at once, whatever the page's history (a page shown as a channel).
+  final bool backLeaves;
 
   @override
   State<SiteView> createState() => _SiteViewState();
@@ -413,6 +422,10 @@ class _SiteViewState extends State<SiteView> {
   }
 
   Future<void> _back() async {
+    if (widget.backLeaves) {
+      widget.onLeave();
+      return;
+    }
     final r = await widget.session.back();
     if (!mounted) return;
     if (r == SiteBack.leave) {
@@ -491,8 +504,13 @@ class _SiteViewState extends State<SiteView> {
   }
 }
 
+/// How a page shown as a channel was left: Back for the TV, OK for the guide, Up or Down for the channel before or
+/// after.
+enum WebLeave { back, guide, up, down }
+
 class WebPage extends StatefulWidget {
-  const WebPage({super.key, required this.name, required this.url, String? site}) : site = site ?? url;
+  const WebPage({super.key, required this.name, required this.url, String? site, this.channelKeys = false})
+    : site = site ?? url;
 
   final String name;
 
@@ -501,6 +519,10 @@ class WebPage extends StatefulWidget {
 
   /// The site it belongs to (the house file's address), under which its last page is kept.
   final String site;
+
+  /// The page is a channel (My Teams): the keys are a channel's - OK the guide, Up and Down the channels, Back the
+  /// TV - and a held OK brings the pointer for the page itself. The page pops with a [WebLeave].
+  final bool channelKeys;
 
   @override
   State<WebPage> createState() => _WebPageState();
@@ -515,17 +537,108 @@ class _WebPageState extends State<WebPage> {
   bool _leaveHint = false;
   Timer? _leaveTimer;
 
+  /// The channel keys (channelKeys): this node has them; the pointer's surface is inactive until a held OK.
+  final _keys = FocusNode(debugLabel: 'channel keys');
+  bool _pointer = false;
+  bool _okHeld = false;
+  bool _okLong = false;
+
   @override
   void initState() {
     super.initState();
     unawaited(_screen.invokeMethod<void>('awake', {'who': 'web', 'on': true}).catchError((_) {}));
+    _showHint();
+  }
+
+  void _showHint() {
+    _hintTimer?.cancel();
+    setState(() => _hint = true);
     _hintTimer = Timer(const Duration(seconds: 6), () {
       if (mounted) setState(() => _hint = false);
     });
   }
 
+  String get _hintText {
+    if (_leaveHint) return 'Back again to leave ${widget.name}';
+    if (!widget.channelKeys) return 'Arrows move the pointer  -  OK clicks  -  hold OK: your phone  -  Back goes back';
+    return _pointer
+        ? 'The pointer: arrows move it, OK clicks the page  -  Back: the channel keys again'
+        : 'OK: the guide  -  Up / Down: the channels  -  hold OK: the pointer  -  Back: the TV';
+  }
+
+  void _leave(WebLeave how) {
+    if (mounted) Navigator.of(context).pop(how);
+  }
+
+  /// The pointer up (a held OK) or down again (Back): the page's own surface takes or gives up the keys.
+  void _setPointer(bool on) {
+    setState(() => _pointer = on);
+    _showHint();
+    if (!on) _keys.requestFocus();
+  }
+
+  /// A channel's keys: OK the guide (held: the pointer), Up and Down the channels; the rest is nobody's.
+  KeyEventResult _channelKey(FocusNode node, KeyEvent event) {
+    if (!widget.channelKeys || _pointer) return KeyEventResult.ignored;
+    final k = event.logicalKey;
+    final select =
+        k == LogicalKeyboardKey.select || k == LogicalKeyboardKey.enter || k == LogicalKeyboardKey.gameButtonA;
+    if (select) {
+      // on the way up, so a held OK (its repeats) brings the pointer once and a short OK the guide
+      if (event is KeyDownEvent) {
+        _okHeld = true;
+        _okLong = false;
+      } else if (event is KeyRepeatEvent && _okHeld) {
+        _okLong = true;
+      } else if (event is KeyUpEvent && _okHeld) {
+        final held = _okLong;
+        _okHeld = false;
+        _okLong = false;
+        if (held) {
+          _setPointer(true);
+        } else {
+          _leave(WebLeave.guide);
+        }
+      }
+      return KeyEventResult.handled;
+    }
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (k == LogicalKeyboardKey.arrowUp || k == LogicalKeyboardKey.channelUp || k == LogicalKeyboardKey.pageUp) {
+      _leave(WebLeave.up);
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.arrowDown || k == LogicalKeyboardKey.channelDown || k == LogicalKeyboardKey.pageDown) {
+      _leave(WebLeave.down);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  /// A round translucent button for a finger (not for the remote: no focus).
+  Widget _touchButton(IconData icon, String label, VoidCallback onTap) {
+    return Semantics(
+      button: true,
+      label: label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: tvBackground.withAlpha(200),
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white.withAlpha(90)),
+          ),
+          child: Icon(icon, size: 32, color: Colors.white),
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
+    _keys.dispose();
     _hintTimer?.cancel();
     _leaveTimer?.cancel();
     _session.dispose();
@@ -545,43 +658,80 @@ class _WebPageState extends State<WebPage> {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final margin = overscanOf(context);
+    final channel = widget.channelKeys;
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          SiteView(
-            session: _session,
-            onLeave: () {
-              if (mounted) Navigator.of(context).pop();
-            },
-            onPageBack: _pageBack,
-            onHold: () => unawaited(phoneDialog(context, _session)),
-          ),
-          if (_hint || _leaveHint)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: margin.bottom,
-              child: IgnorePointer(
+      body: Focus(
+        focusNode: _keys,
+        autofocus: channel,
+        canRequestFocus: channel,
+        onKeyEvent: _channelKey,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // the page's own view takes Android's focus as it pleases (a page that focuses a box, say), and the
+            // keys with it; with the channel keys it is sent away again at once, as the full-screen video is
+            Focus(
+              skipTraversal: true,
+              descendantsAreTraversable: false,
+              onFocusChange: (has) {
+                if (has && channel && !_pointer) _keys.requestFocus();
+              },
+              child: SiteView(
+                session: _session,
+                active: !channel || _pointer,
+                backLeaves: channel,
+                onLeave: () {
+                  if (channel && _pointer) {
+                    _setPointer(false);
+                  } else if (mounted) {
+                    Navigator.of(context).pop(WebLeave.back);
+                  }
+                },
+                onPageBack: _pageBack,
+                onHold: () => unawaited(phoneDialog(context, _session)),
+              ),
+            ),
+            // by touch (a phone or tablet has no remote, and the page keeps its own taps): channel up, the guide,
+            // channel down, at the right edge; nothing the remote's focus can land on
+            if (channel)
+              Positioned(
+                right: 12,
+                top: 0,
+                bottom: 0,
                 child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: tvBackground.withAlpha(225),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      _leaveHint
-                          ? 'Back again to leave ${widget.name}'
-                          : 'Arrows move the pointer  -  OK clicks  -  hold OK: your phone  -  Back goes back',
-                      style: text.bodyMedium,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _touchButton(Icons.keyboard_arrow_up, 'Channel up', () => _leave(WebLeave.up)),
+                      const SizedBox(height: 10),
+                      _touchButton(Icons.list, 'The guide', () => _leave(WebLeave.guide)),
+                      const SizedBox(height: 10),
+                      _touchButton(Icons.keyboard_arrow_down, 'Channel down', () => _leave(WebLeave.down)),
+                    ],
+                  ),
+                ),
+              ),
+            if (_hint || _leaveHint)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: margin.bottom,
+                child: IgnorePointer(
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: tvBackground.withAlpha(225),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(_hintText, style: text.bodyMedium),
                     ),
                   ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

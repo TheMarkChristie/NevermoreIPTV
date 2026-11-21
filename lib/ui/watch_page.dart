@@ -519,33 +519,49 @@ class _WatchPageState extends State<WatchPage> {
 
   /// Stops playback (one connection: nothing plays behind other screens), opens [page], and on return plays on.
   /// A site in the browser, at the page it was left on (6 Nov 2026), or from its start.
-  Future<void> _openSite(PlayableChannel ch, {bool fromStart = false}) {
+  Future<void> _openSite(PlayableChannel ch, {bool fromStart = false}) async {
     final site = ch.channel.url ?? '';
     final page = fromStart ? null : library.sitePages[site];
-    return _leaveFor(WebPage(name: ch.name, url: page ?? site, site: site));
+    // My Teams is a channel (0.99.9997): its page takes a channel's keys and says how it was left
+    final asChannel = ch.name == myTeamsName;
+    final left = await _leaveFor(WebPage(name: ch.name, url: page ?? site, site: site, channelKeys: asChannel));
+    if (!mounted) return;
+    switch (left) {
+      case WebLeave.guide:
+        _openGuide();
+      case WebLeave.up:
+        _step(-1);
+      case WebLeave.down:
+        _step(1);
+      default:
+        break;
+    }
   }
 
-  Future<void> _leaveFor(Widget page) async {
+  /// How the page was left (a WebLeave from a page shown as a channel; else whatever it popped with, mostly null).
+  Future<Object?> _leaveFor(Widget page) async {
     // a second OK while the stop is under way (a double press) would push a second page
-    if (_away) return;
+    if (_away) return null;
     _token++;
     _away = true;
     _zapTimer?.cancel();
     await _stopPlayer();
-    if (!mounted) return;
+    if (!mounted) return null;
     setState(() => _guideOpen = false);
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+    final left = await Navigator.of(context).push<Object?>(MaterialPageRoute(builder: (_) => page));
     _away = false;
-    if (!mounted) return;
+    if (!mounted) return left;
     _videoFocus.requestFocus();
     final ch = _current;
     final still = ch == null ? null : _all.where((c) => c.uid == ch.uid).firstOrNull;
+    // playing on is not waited for: a caller acting on [left] (the guide, a channel step) must not wait for a stream
     if (still != null) {
-      await _play(still);
+      unawaited(_play(still));
     } else {
       _current = null;
-      await _startLast();
+      unawaited(_startLast());
     }
+    return left;
   }
 
   Future<void> _openSettings() => _leaveFor(const SettingsPage());
