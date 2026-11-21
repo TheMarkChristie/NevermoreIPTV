@@ -36,7 +36,8 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: #000d18; color: var(--white); overflow: hidden; }
-body { font-family: var(--font); -webkit-font-smoothing: antialiased; }
+body { font-family: var(--font); -webkit-font-smoothing: antialiased; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
+#lower { cursor: pointer; }
 
 /* the 1920 x 1080 canvas, scaled to the screen by app.js inside a fixed box that clips it: unclipped, a WebView
    widens its layout viewport to the unscaled canvas and reports that width (Nevermore's TV WebView said 1680 for 960) */
@@ -55,6 +56,53 @@ body { font-family: var(--font); -webkit-font-smoothing: antialiased; }
 /* YouTube's own title, channel name and buttons sit along the top and bottom of its player: the frame is 180 px taller
    than the picture, so the 16:9 video sits in the middle with those bands above and below, cropped by #video.
    No pointer on it either, so no hover overlay; clicks reach the page (sound on). */
+/* a copy downloaded on the house: no YouTube bands to crop, so it fills the box */
+#local { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; pointer-events: none; }
+#local[hidden] { display: none; }
+/* ---- what's on next: my team's colour and both clubs' badges between highlights, never the score ---- */
+#bumper { position: absolute; inset: 0; z-index: 3; overflow: hidden; background: var(--deep); transition: opacity 0.35s ease; }
+#bumper.gone { opacity: 0; pointer-events: none; }
+#bumper .half { position: absolute; inset: 0; }
+#bumper .half.home { clip-path: polygon(0 0, 57% 0, 43% 100%, 0 100%); }
+#bumper .half.away { clip-path: polygon(57% 0, 100% 0, 100% 100%, 43% 100%); }
+#bumper.single .half.home { clip-path: none; }
+#bumper.single .half.away { display: none; }
+#bumper .half::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0) 35%, rgba(0,0,0,0.3)); }
+#bumper .cb { position: absolute; top: 120px; width: 340px; height: 340px; object-fit: contain; z-index: 1; filter: drop-shadow(0 16px 30px rgba(0,0,0,0.5)); }
+#bumper .cb[hidden] { display: none; }
+#bumper .home .cb { left: calc(24% - 170px); }
+#bumper .away .cb { left: calc(76% - 170px); }
+#bumper.single .home .cb { left: calc(50% - 170px); }
+#bumper .band { position: absolute; left: 0; right: 0; bottom: 0; padding: 26px 64px 34px; z-index: 2; background: linear-gradient(180deg, rgba(0,13,24,0) 0%, rgba(0,13,24,0.86) 38%, rgba(0,13,24,0.94)); }
+#bumper .k { font-size: 26px; font-weight: 900; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ice); }
+#bumper .k::before { content: ""; display: inline-block; width: 14px; height: 14px; background: var(--red); transform: rotate(45deg); margin-right: 16px; position: relative; top: -2px; }
+#bumper .t { font-size: 58px; font-weight: 800; line-height: 1.12; margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#bumper .sl { display: flex; align-items: center; gap: 14px; margin-top: 8px; font-size: 28px; font-weight: 600; color: var(--muted); }
+#bumper .sl img.bug { width: auto; height: 42px; }
+#bumper.on .half.home { animation: cardL 0.55s cubic-bezier(.2,.8,.2,1) both; }
+#bumper.on .half.away { animation: cardR 0.55s cubic-bezier(.2,.8,.2,1) both; }
+#bumper.on .cb { animation: cardBadge 0.6s 0.2s cubic-bezier(.2,.9,.3,1.25) both; }
+#bumper.on .band { animation: cardUp 0.45s 0.35s ease-out both; }
+@keyframes cardL { from { transform: translateX(-55%); } to { transform: none; } }
+@keyframes cardR { from { transform: translateX(55%); } to { transform: none; } }
+@keyframes cardBadge { from { transform: scale(0.4); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes cardUp { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+/* ---- pick a highlight: a long press of OK ---- */
+#picker { position: absolute; inset: 0; z-index: 5; background: rgba(0,13,24,0.9); padding: 26px 34px 30px; display: flex; flex-direction: column; }
+#picker[hidden] { display: none; }
+#picker .hd { display: flex; align-items: baseline; justify-content: space-between; font-size: 32px; font-weight: 800; margin-bottom: 18px; }
+#picker .hd small { font-size: 20px; font-weight: 600; color: var(--muted); }
+#picker .grid { flex: 1; display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 222px; gap: 18px; overflow-y: auto; scrollbar-width: none; padding: 6px; }
+#picker .grid::-webkit-scrollbar { display: none; }
+#picker .tile { position: relative; background: var(--panel); border: 4px solid transparent; border-radius: var(--r-mid); padding: 14px 14px 12px; display: flex; flex-direction: column; justify-content: space-between; min-width: 0; transition: transform 0.15s, border-color 0.15s; }
+#picker .tile.on { border-color: var(--ice); background: #123a5c; transform: scale(1.04); }
+#picker .bd { display: flex; align-items: center; justify-content: center; gap: 16px; height: 108px; }
+#picker .bd img { width: 100px; height: 100px; object-fit: contain; }
+#picker .bd .v { font-size: 24px; font-weight: 800; color: var(--muted); }
+#picker .tt { font-size: 23px; font-weight: 800; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#picker .ts { display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; color: var(--muted); white-space: nowrap; overflow: hidden; }
+#picker .tag { position: absolute; top: 10px; right: 10px; font-style: normal; font-size: 13px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; background: var(--red); color: #fff; border-radius: 4px; padding: 2px 7px; }
+#picker .tag.now { background: var(--ice); color: var(--deep); }
 #player, #video iframe { position: absolute; left: 0; top: -90px; width: 100%; height: calc(100% + 180px); border: 0; pointer-events: none; }
 #slate {
   position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; padding: 70px 90px;
@@ -76,6 +124,7 @@ body { font-family: var(--font); -webkit-font-smoothing: antialiased; }
 .team-h img { width: 64px; height: 64px; object-fit: contain; flex: none; }
 .team-h .n { font-size: 25px; font-weight: 800; line-height: 1.1; }
 .team-h .l { font-size: 14px; font-weight: 600; color: var(--muted); margin-top: 4px; }
+.team-h .l img.bug { width: auto; height: 18px; }
 .tb { background: rgba(255,255,255,0.055); border-radius: var(--r-mid); padding: 9px 12px 10px; margin-bottom: 9px; }
 .tb h4 { margin: 0 0 5px; font-size: 12px; font-weight: 800; letter-spacing: 0.14em; color: var(--ice); text-transform: uppercase; }
 .tb .g { display: flex; align-items: center; gap: 9px; font-size: 18px; font-weight: 700; min-width: 0; }
@@ -120,6 +169,8 @@ body { font-family: var(--font); -webkit-font-smoothing: antialiased; }
 #panel .pane.on { opacity: 1; transform: none; }
 
 .ph { display: flex; align-items: baseline; justify-content: space-between; font-size: 24px; font-weight: 800; padding: 10px 8px 8px; }
+.ph span { display: inline-flex; align-items: center; min-width: 0; }
+.ph img.bug.lgb { width: auto; height: 28px; margin-right: 10px; top: 0; }
 .ph small { font-size: 15px; font-weight: 600; color: var(--muted); letter-spacing: 0.06em; }
 
 table.lg { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 19px; font-weight: 600; table-layout: fixed; margin-bottom: 8px; }
@@ -146,8 +197,14 @@ table.lg tr.me td.gd { color: #fff; }
 .gl .tm.lost span { color: var(--muted); font-weight: 600; }
 .gl .tm b { background: #fff; color: var(--panel); font-weight: 900; min-width: 44px; padding: 0 8px; border-radius: var(--r-chip); text-align: center; font-variant-numeric: tabular-nums; }
 .gl .tm b:empty { display: none; }
-.gl .tv, .tb .tv { font-size: 14px; font-weight: 600; color: var(--muted); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.gl .tv i, .tb .tv i { font-style: normal; font-weight: 900; font-size: 11px; letter-spacing: 0.08em; background: var(--ice); color: var(--panel); border-radius: 4px; padding: 1px 5px; margin-right: 7px; position: relative; top: -1px; }
+.gl .tv, .tb .tv { font-size: 14px; font-weight: 600; color: var(--muted); margin-top: 4px; white-space: nowrap; overflow: hidden; display: flex; align-items: center; height: 26px; }
+/* league badges and channel logos: "bugs" the house trims and sets on their chips (logos.py) */
+img.bug { width: auto; vertical-align: middle; flex: none; }
+img.bug.lgb { width: auto; height: 20px; margin-right: 7px; position: relative; top: -1px; }
+img.bug.ch { width: auto; height: 24px; margin-right: 6px; }
+.cc { flex: none; font-style: normal; font-weight: 900; font-size: 11px; letter-spacing: 0.08em; background: var(--ice); color: var(--panel); border-radius: 4px; padding: 1px 5px; margin-right: 6px; }
+.chn + .cc, img.bug.ch + .cc { margin-left: 6px; }
+.chn { flex: none; font-size: 14px; font-weight: 700; color: #fff; margin-right: 8px; }
 .gl li.live .tm b { background: var(--red); color: #fff; }
 .gl li.sub { border-bottom: 0; padding: 14px 8px 2px; font-size: 15px; font-weight: 800; letter-spacing: 0.12em; color: var(--ice); text-transform: uppercase; }
 .gl img { width: 26px; height: 26px; object-fit: contain; }
@@ -155,9 +212,11 @@ table.lg tr.me td.gd { color: #fff; }
 /* ---- the lower third ---- */
 #lower { position: absolute; left: 24px; top: 876px; width: 1472px; height: 104px; display: flex; border-radius: var(--r-box); overflow: hidden; box-shadow: 0 12px 30px rgba(0,0,0,0.4); }
 #lower .tab {
-  background: var(--red); color: #fff; font-weight: 800; font-size: 28px; padding: 0 30px; display: flex; align-items: center;
-  white-space: nowrap; max-width: 470px; overflow: hidden; text-overflow: ellipsis;
+  background: var(--red); color: #fff; font-weight: 800; font-size: 28px; padding: 0 30px 0 22px; display: flex; align-items: center;
+  white-space: nowrap; max-width: 470px; min-width: 0; overflow: hidden;
 }
+#lower .tab span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#lower .tab img.bug { height: 58px; margin-right: 16px; }
 #lower .bar { flex: 1; background: #fff; color: var(--panel); display: flex; align-items: center; gap: 22px; padding: 0 28px; min-width: 0; }
 #lower .bar img { width: 60px; height: 60px; object-fit: contain; flex: none; }
 #lower .bar img[hidden] { display: none; }
@@ -174,6 +233,7 @@ table.lg tr.me td.gd { color: #fff; }
 @keyframes pulse { 50% { background: var(--red-deep); } }
 #next .txt { padding: 12px 16px; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
 #next .head { font-size: 14px; font-weight: 800; color: var(--ice); letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#next .head img.bug { height: 18px; margin-right: 7px; position: relative; top: -1px; }
 #next .game { font-size: 19px; font-weight: 800; line-height: 1.2; margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 #next .sub { font-size: 16px; font-weight: 600; color: var(--muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
@@ -183,6 +243,10 @@ table.lg tr.me td.gd { color: #fff; }
 #ticker .run { position: absolute; left: 0; top: 0; height: 52px; display: flex; align-items: center; white-space: nowrap; will-change: transform; font-size: 27px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.01em; }
 #ticker .tk b { font-weight: 900; color: #fff; background: var(--deep); padding: 2px 10px; border-radius: var(--r-chip); margin-right: 12px; font-size: 21px; letter-spacing: 0.06em; position: relative; top: -2px; }
 #ticker .tk.live b { background: var(--panel); color: #fff; }
+#ticker img.bug { width: auto; height: 34px; margin-right: 10px; position: relative; top: -2px; }
+#ticker .tktv { display: inline-flex; align-items: center; margin-left: 14px; position: relative; top: -2px; }
+#ticker .tktv .cc { font-size: 15px; padding: 2px 7px; background: var(--deep); color: #fff; }
+#ticker .tktv .chn { font-size: 22px; color: var(--deep); }
 #ticker .sep { display: inline-block; width: 12px; height: 12px; background: var(--red); margin: 0 26px; transform: rotate(45deg); position: relative; top: -3px; }
 
 #foot { position: absolute; left: 30px; right: 30px; top: 1052px; height: 26px; display: flex; justify-content: space-between; align-items: center; font-size: 15px; color: var(--muted); font-weight: 500; }
@@ -207,6 +271,13 @@ table.lg tr.me td.gd { color: #fff; }
 <div id="stage" aria-label="CMHjem TV">
   <section id="video" aria-label="Highlights">
     <div id="player"></div>
+    <video id="local" playsinline preload="auto" hidden></video>
+    <div id="picker" hidden><div class="hd">Pick a highlight<small>Arrows to choose &middot; OK to play &middot; Back to close</small></div><div class="grid"></div></div>
+    <div id="bumper" class="gone" aria-hidden="true">
+      <div class="half home"><img class="cb" alt="" hidden></div>
+      <div class="half away"><img class="cb" alt="" hidden></div>
+      <div class="band"><div class="k">What's on next</div><div class="t"></div><div class="sl"><span class="lb"></span><span class="s"></span></div></div>
+    </div>
     <div id="slate"><div class="eyebrow">CMHjem TV</div><div class="big">Getting the scores&hellip;</div><div class="small">Results, fixtures and highlights from TheSportsDB</div></div>
     <div id="sound" hidden>Press OK for sound</div>
   </section>
@@ -234,7 +305,7 @@ table.lg tr.me td.gd { color: #fff; }
     <button type="submit">Save and start</button>
   </form>
 </div>
-<script>window.MYTEAMS_CONFIG = {"title":"CMHjem","teams":[{"id":"133639","name":"St Johnstone"},{"id":"133990","name":"Rosenborg","words":"RBK"},{"id":"133613","name":"Manchester City"},{"id":"133602","name":"Liverpool"},{"id":"134149","name":"Seattle Sounders"},{"id":"136516","name":"Norway","words":"Norge, landslaget"},{"id":"136450","name":"Scotland","youtube":"https://www.youtube.com/channel/UCsaS5aZjlJPJCzNwjEc3waw","youtubeFeed":"https://www.youtube.com/feeds/videos.xml?channel_id=UCsaS5aZjlJPJCzNwjEc3waw"},{"id":"140082","name":"Seattle Kraken"},{"id":"156282","name":"Seattle Torrent"},{"id":"136520","name":"Glasgow Clan","words":"Clan"},{"id":"140834","name":"Frisk Asker","words":"Frisk"},{"id":"134934","name":"Dallas Cowboys"},{"id":"134941","name":"Minnesota Vikings"},{"id":"136448","name":"Seattle Storm"},{"id":"135345","name":"Caledonia Gladiators","youtube":"https://www.youtube.com/channel/UCQ4FNq7nKpcHqAZZJ9kPPnA","youtubeFeed":"https://www.youtube.com/feeds/videos.xml?channel_id=UCQ4FNq7nKpcHqAZZJ9kPPnA"},{"id":"135097","name":"Valencia Basket","words":"Valencia"}],"feeds":[{"name":"Liverpool","team":"133602","url":"https://feeds.bbci.co.uk/sport/football/teams/liverpool/rss.xml"},{"name":"Man City","team":"133613","url":"https://feeds.bbci.co.uk/sport/football/teams/manchester-city/rss.xml"},{"name":"St Johnstone","team":"133639","url":"https://feeds.bbci.co.uk/sport/football/teams/st-johnstone/rss.xml"},{"name":"Ice hockey","sport":"Ice Hockey","url":"https://feeds.bbci.co.uk/sport/ice-hockey/rss.xml"},{"name":"NFL","sport":"American Football","url":"https://feeds.bbci.co.uk/sport/american-football/rss.xml"},{"name":"St Johnstone","team":"133639","url":"https://www.dailyrecord.co.uk/all-about/st-johnstone-fc?service=rss"},{"name":"Rosenborg","team":"133990","url":"https://www.rbk.no/rss-nyheter"},{"name":"Man City","team":"133613","url":"https://www.manchestereveningnews.co.uk/all-about/manchester-city-fc?service=rss"},{"name":"Liverpool","team":"133602","url":"https://www.liverpoolecho.co.uk/all-about/liverpool-fc?service=rss"},{"name":"Sounders","team":"134149","url":"https://www.seattletimes.com/sports/sounders/feed/"},{"name":"Norway","team":"136516","url":"https://feeds.bbci.co.uk/sport/football/teams/norway/rss.xml"},{"name":"Scotland","team":"136450","url":"https://feeds.bbci.co.uk/sport/football/teams/scotland/rss.xml"},{"name":"Kraken","team":"140082","url":"https://www.seattletimes.com/sports/kraken/feed/"},{"name":"Kraken","team":"140082","url":"https://www.davyjoneslockerroom.com/rss/index.xml"},{"name":"Torrent","team":"156282","url":"https://www.seattletimes.com/sports/torrent/feed/"},{"name":"Cowboys","team":"134934","url":"https://www.dallascowboys.com/rss/news"},{"name":"Cowboys","team":"134934","url":"https://www.bloggingtheboys.com/rss/index.xml"},{"name":"Vikings","team":"134941","url":"https://www.vikings.com/rss/news"},{"name":"Vikings","team":"134941","url":"https://www.dailynorseman.com/rss/index.xml"},{"name":"Storm","team":"136448","url":"https://www.seattletimes.com/sports/storm/feed/"},{"name":"Gladiators","team":"135345","url":"https://caledoniagladiators.com/feed/"},{"name":"Super League Basketball","sport":"Basketball","url":"https://www.superleaguebasketballm.co.uk/feed/"},{"name":"VG fotball","sport":"Soccer","url":"https://www.vg.no/rss/feed/?categories=1072","ticker":false},{"name":"NRK Sport","url":"https://www.nrk.no/sport/toppsaker.rss","ticker":false},{"name":"SoloBasket","sport":"Basketball","url":"https://www.solobasket.com/feed/","ticker":false}],"options":{"highlightDays":21,"maxHighlights":40,"resultsDays":3,"clock":"12h","timeZone":"","timeZones":[{"label":"SCO","tz":"Europe/London"},{"label":"NOR","tz":"Europe/Oslo"}],"panelSeconds":15,"teamSeconds":10,"tickerSpeed":120,"perFeed":3,"tableStaleDays":45}};</script>
+<script>window.MYTEAMS_CONFIG = {"title":"CMHjem","teams":[{"id":"133639","name":"St Johnstone"},{"id":"133990","name":"Rosenborg","words":"RBK"},{"id":"133613","name":"Manchester City"},{"id":"133602","name":"Liverpool"},{"id":"134149","name":"Seattle Sounders"},{"id":"136516","name":"Norway","words":"Norge, landslaget"},{"id":"136450","name":"Scotland"},{"id":"140082","name":"Seattle Kraken"},{"id":"156282","name":"Seattle Torrent"},{"id":"136520","name":"Glasgow Clan","words":"Clan"},{"id":"140834","name":"Frisk Asker","words":"Frisk"},{"id":"134934","name":"Dallas Cowboys"},{"id":"134941","name":"Minnesota Vikings"},{"id":"136448","name":"Seattle Storm"},{"id":"135345","name":"Caledonia Gladiators"},{"id":"135097","name":"Valencia Basket","words":"Valencia"}],"feeds":[{"name":"Liverpool","team":"133602","url":"https://feeds.bbci.co.uk/sport/football/teams/liverpool/rss.xml"},{"name":"Man City","team":"133613","url":"https://feeds.bbci.co.uk/sport/football/teams/manchester-city/rss.xml"},{"name":"St Johnstone","team":"133639","url":"https://feeds.bbci.co.uk/sport/football/teams/st-johnstone/rss.xml"},{"name":"Ice hockey","sport":"Ice Hockey","url":"https://feeds.bbci.co.uk/sport/ice-hockey/rss.xml"},{"name":"NFL","sport":"American Football","url":"https://feeds.bbci.co.uk/sport/american-football/rss.xml"},{"name":"St Johnstone","team":"133639","url":"https://www.dailyrecord.co.uk/all-about/st-johnstone-fc?service=rss"},{"name":"Rosenborg","team":"133990","url":"https://www.rbk.no/rss-nyheter"},{"name":"Man City","team":"133613","url":"https://www.manchestereveningnews.co.uk/all-about/manchester-city-fc?service=rss"},{"name":"Liverpool","team":"133602","url":"https://www.liverpoolecho.co.uk/all-about/liverpool-fc?service=rss"},{"name":"Sounders","team":"134149","url":"https://www.seattletimes.com/sports/sounders/feed/"},{"name":"Norway","team":"136516","url":"https://feeds.bbci.co.uk/sport/football/teams/norway/rss.xml"},{"name":"Scotland","team":"136450","url":"https://feeds.bbci.co.uk/sport/football/teams/scotland/rss.xml"},{"name":"Kraken","team":"140082","url":"https://www.seattletimes.com/sports/kraken/feed/"},{"name":"Kraken","team":"140082","url":"https://www.davyjoneslockerroom.com/rss/index.xml"},{"name":"Torrent","team":"156282","url":"https://www.seattletimes.com/sports/torrent/feed/"},{"name":"Cowboys","team":"134934","url":"https://www.dallascowboys.com/rss/news"},{"name":"Cowboys","team":"134934","url":"https://www.bloggingtheboys.com/rss/index.xml"},{"name":"Vikings","team":"134941","url":"https://www.vikings.com/rss/news"},{"name":"Vikings","team":"134941","url":"https://www.dailynorseman.com/rss/index.xml"},{"name":"Storm","team":"136448","url":"https://www.seattletimes.com/sports/storm/feed/"},{"name":"Gladiators","team":"135345","url":"https://caledoniagladiators.com/feed/"},{"name":"Super League Basketball","sport":"Basketball","url":"https://www.superleaguebasketballm.co.uk/feed/"},{"name":"VG fotball","sport":"Soccer","url":"https://www.vg.no/rss/feed/?categories=1072","ticker":false},{"name":"NRK Sport","url":"https://www.nrk.no/sport/toppsaker.rss","ticker":false},{"name":"SoloBasket","sport":"Basketball","url":"https://www.solobasket.com/feed/","ticker":false}],"options":{"highlightDays":7,"maxHighlights":40,"resultsDays":3,"clock":"24h","timeZone":"","timeZones":[{"label":"SCO","tz":"Europe/London"},{"label":"NOR","tz":"Europe/Oslo"}],"panelSeconds":15,"teamSeconds":10,"tickerSpeed":120,"perFeed":3,"tableStaleDays":45,"channelLogos":{"TV 2":"https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/TV2-2021.svg/330px-TV2-2021.svg.png","TV 2 Sport 1":"https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/TV2-2021.svg/330px-TV2-2021.svg.png","TV 2 Direkte":"https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/TV_2_Direkte_%282022-%29.svg/330px-TV_2_Direkte_%282022-%29.svg.png","DAZN":"https://upload.wikimedia.org/wikipedia/commons/thumb/7/71/DAZN_logo.svg/330px-DAZN_logo.svg.png","BBC Scotland":"https://upload.wikimedia.org/wikipedia/commons/thumb/6/66/BBC_Scotland_2021_%28channel%29.svg/330px-BBC_Scotland_2021_%28channel%29.svg.png"}},"videos":[{"name":"Scotland National Team","url":"https://www.youtube.com/@ScotlandNationalTeam","feed":"https://www.youtube.com/feeds/videos.xml?channel_id=UCsaS5aZjlJPJCzNwjEc3waw","team":"136450","titles":"highlights"},{"name":"Caledonia Gladiators","url":"https://www.youtube.com/channel/UCQ4FNq7nKpcHqAZZJ9kPPnA","feed":"https://www.youtube.com/feeds/videos.xml?channel_id=UCQ4FNq7nKpcHqAZZJ9kPPnA","team":"135345"},{"name":"SPFL","url":"https://www.youtube.com/@spflofficial","feed":"https://www.youtube.com/feeds/videos.xml?channel_id=UCakRszbIjjGYtFrDPeg5Ieg","team":"133639","titles":"St Johnstone"},{"name":"Rosenborg","url":"https://www.youtube.com/@RBKfotball","feed":"https://www.youtube.com/feeds/videos.xml?channel_id=UCMzBr0zvB2uhUTRvnSFzwIw","team":"133990","titles":"Rosenborg -, - Rosenborg"},{"name":"Super League Basketball","url":"https://www.youtube.com/@SuperLeagueBasketballM","feed":"https://www.youtube.com/feeds/videos.xml?channel_id=UCAsCfBvGdjAxOzqGOcCxkzg","team":"135345","titles":"Caledonia Gladiators + highlights"},{"name":"Glasgow Clan","url":"https://www.youtube.com/@ClanIHC","feed":"https://www.youtube.com/feeds/videos.xml?channel_id=UC6tsEkQ1h8VnZqB8TFHs_YA","team":"136520","titles":"Highlights*"},{"name":"Edinburgh Capitals","url":"https://www.youtube.com/@EdinburghCapitalsTV","feed":"https://www.youtube.com/feeds/videos.xml?channel_id=UCnC7xlfyKJTqtHSO4DWS4SA","titles":"Highlights"},{"name":"EHL","url":"https://www.youtube.com/@EHLnorway","feed":"https://www.youtube.com/feeds/videos.xml?channel_id=UCoZ1KLi2jWbuvA-8IzWsZRg","titles":"Highlights"}]};</script>
 <script>/* My Teams TV - the pure rules (no page, no network): which games are results, fixtures, live or highlights, how names
  * and times are written, which slice of a league table to show, what the ticker says, and how an RSS or Atom feed is
  * read. Loaded by the page as window.Core and by node:test through module.exports. */
@@ -401,7 +472,7 @@ table.lg tr.me td.gd { color: #fff; }
   /** The highlights to play: finished games with a YouTube link, newest first, one per video, within [days]. */
   function highlights(events, now, opts) {
     const days = (opts && opts.days) || 21;
-    const max = (opts && opts.max) || 40;
+    const max = opts && opts.max != null ? opts.max : 40; // 0 is none: the YouTube channels' clips fill the rotation
     const seen = new Set();
     const out = [];
     for (const e of results(events, now, days)) {
@@ -414,26 +485,17 @@ table.lg tr.me td.gd { color: #fff; }
     return out;
   }
 
-  /** The playing order: highlights not yet seen this session first (newest first), then the rest; never empty when
-   * there are highlights. [skip] is the videos that failed to play (embedding refused, removed). */
-  function nextHighlight(list, played, current, skip) {
-    const ok = list.filter((h) => !(skip && skip.has(h.videoId)));
-    if (!ok.length) return null;
-    const fresh = ok.find((h) => !played.has(h.videoId) && h.videoId !== current);
-    if (fresh) return fresh;
-    played.clear();
-    const at = ok.findIndex((h) => h.videoId === current);
-    return ok[(at + 1) % ok.length];
-  }
-
-  /** The first highlight when the page opens: a random one not played on this screen lately ([recent]: video ids),
-   * so it does not open on the same clip every time; any of them once all have been played. [rand] in [0, 1). */
-  function pickStart(list, recent, rand, skip) {
+  /** The next highlight: the one this screen has played least ([plays]: {videoId: count}), the newest among equals
+   * (the list is newest first), not the one playing now unless it is the only one; [skip]: the ones that would not
+   * play. Mark, 16 Nov 2026: "play the one with the least amount of plays first". */
+  function leastPlayed(list, plays, current, skip) {
     const ok = (list || []).filter((h) => !(skip && skip.has(h.videoId)));
     if (!ok.length) return null;
-    const fresh = ok.filter((h) => !(recent && recent.has(h.videoId)));
-    const pool = fresh.length ? fresh : ok;
-    return pool[Math.min(pool.length - 1, Math.floor((rand || 0) * pool.length))];
+    const pool = ok.length > 1 ? ok.filter((h) => h.videoId !== current) : ok;
+    const n = (h) => Number((plays || {})[h.videoId]) || 0;
+    let best = null;
+    for (const h of pool) if (!best || n(h) < n(best)) best = h;
+    return best;
   }
 
   /** A slice of [size] rows from a league table that holds as many tracked teams as it can, the first of them
@@ -600,7 +662,7 @@ table.lg tr.me td.gd { color: #fff; }
     for (const e of input.live || []) out.push({ kind: "live", label: "LIVE", text: `${scoreLine(e)} ${statusText(e)}`.trim() });
     const res = (input.results || [])
       .slice(0, o.results)
-      .map((e) => ({ kind: "result", label: statusText(e), text: `${scoreLine(e)} (${shortLeague(e.strLeague)})` }));
+      .map((e) => ({ kind: "result", label: statusText(e), text: `${scoreLine(e)} (${shortLeague(e.strLeague)})`, plain: scoreLine(e), event: e }));
     const lists = (input.feeds || []).filter((f) => f.ticker !== false).map((f) => // "ticker": false feeds only serve team pages
       (f.items || [])
         .filter((i) => !i.date || now - i.date <= o.feedDays * DAY)
@@ -621,7 +683,8 @@ table.lg tr.me td.gd { color: #fff; }
     {
       const tv = o.tv ? o.tv(e) : "";
       const at = o.zones ? zonesWhen(kickoff(e), now, o.zones) : when(kickoff(e), now, o.tz);
-      out.push({ kind: "next", label: "NEXT", text: `${scoreLine(e)}, ${at}${tv ? ` (TV: ${tv})` : ""}` });
+      // [plain]: without the channels, for a page that draws their logos; [event]: the game itself
+      out.push({ kind: "next", label: "NEXT", text: `${scoreLine(e)}, ${at}${tv ? ` (TV: ${tv})` : ""}`, plain: `${scoreLine(e)}, ${at}`, event: e });
     }
     return out;
   }
@@ -673,7 +736,7 @@ table.lg tr.me td.gd { color: #fff; }
     for (const t of tables || [])
       for (const r of t.rows || [])
         if (String(r.idTeam) === String(teamId))
-          return { rank: Number(r.intRank), points: r.intPoints, played: r.intPlayed, league: t.league, group: t.group || "" };
+          return { rank: Number(r.intRank), points: r.intPoints, played: r.intPlayed, league: t.league, group: t.group || "", badge: t.badge || "" };
     return null;
   }
 
@@ -723,27 +786,58 @@ table.lg tr.me td.gd { color: #fff; }
     return out;
   }
 
-  /** A team's own YouTube videos (its channel's or playlist's feed, given on the settings page) as highlights: those
-   * whose title holds one of the filter words ("highlight" unless the settings say otherwise; "*" takes all), from the
-   * last [days], at most [max]. One that names an opponent of a recent game and came out within six days of it is
-   * that game's highlight (score and venue on the lower third); the rest are the club's own clips. */
+  /** A title made comparable: lower case, no dots, one kind of dash, single spaces ("St. Johnstone" = "st johnstone"). */
+  function normTitle(s) {
+    return String(s || "").toLowerCase().replace(/[‐-―]/g, "-").replace(/\./g, "").replace(/\s+/g, " ").trim();
+  }
+
+  /** A YouTube channel's title rule as a test of a title (the servers' youtube.py holds the same rule):
+   * "" = titles holding "highlight"; "*" = every video; "St Johnstone" = titles holding it; "Highlights*" = titles
+   * beginning with it; "a, b" = either; "a + b" = both. Case, dots and dashes do not count. */
+  function titleRule(rule) {
+    const raw = String(rule || "").trim() || "highlight";
+    if (raw === "*") return () => true;
+    const alts = raw.split(",").map((a) => a.split("+").map((p) => p.trim()).filter(Boolean)).filter((a) => a.length);
+    const holds = (t, p) => (p.endsWith("*") && !p.startsWith("*") ? t.startsWith(normTitle(p.slice(0, -1))) : t.includes(normTitle(p.replace(/^\*+|\*+$/g, ""))));
+    return (title) => {
+      const t = normTitle(title);
+      return alts.some((parts) => parts.every((p) => holds(t, p)));
+    };
+  }
+
+  /** The config's YouTube channels: its "videos" list ({name, url, feed, team, titles, days}), and a team's single
+   * channel of before (youtube, youtubeFeed, youtubeFilter) where the list does not have it. */
+  function videoSources(config) {
+    const out = ((config && config.videos) || []).filter((v) => v && v.feed);
+    const have = new Set(out.map((v) => v.feed));
+    for (const t of (config && config.teams) || [])
+      if (t && t.youtubeFeed && !have.has(t.youtubeFeed)) {
+        out.push({ name: t.name || "", url: t.youtube || "", feed: t.youtubeFeed, team: String(t.id || ""), titles: t.youtubeFilter || "" });
+        have.add(t.youtubeFeed);
+      }
+    return out;
+  }
+
+  /** A YouTube channel's videos as highlights: those its title rule ([titles], else the team's youtubeFilter) takes,
+   * from the last [days], at most [max]. One that names an opponent of a recent game of the team's and came out within
+   * six days of it is that game's highlight (score and venue on the lower third); the rest are clips under the
+   * team's name (or the channel's, for a channel that is no team's). */
   function clubVideos(items, team, events, now, opts) {
     const o = Object.assign({ days: 21, max: 3 }, opts || {});
     const id = String(team.id || team.idTeam || "");
-    const raw = String(team.youtubeFilter || "highlight").trim();
-    const words = raw === "*" ? [] : raw.split(",").map((w) => w.trim().toLowerCase()).filter(Boolean);
-    const games = results(events || [], now, o.days + 7).filter((e) => String(e.idHomeTeam) === id || String(e.idAwayTeam) === id);
+    const takes = titleRule(o.titles !== undefined ? o.titles : team.youtubeFilter);
+    const games = id ? results(events || [], now, o.days + 7).filter((e) => String(e.idHomeTeam) === id || String(e.idAwayTeam) === id) : [];
     const out = [];
     for (const it of items || []) {
       const vid = videoId(it.link);
       if (!vid || !it.date || now - it.date > o.days * DAY) continue;
       const title = String(it.title || "");
-      if (words.length && !words.some((w) => title.toLowerCase().includes(w))) continue;
+      if (!takes(title)) continue;
       const game = games.find((e) => {
         const k = kickoff(e);
         if (!k || it.date - k < -12 * HOUR || it.date - k > 6 * DAY) return false;
         const other = String(e.idHomeTeam) === id ? e.strAwayTeam : e.strHomeTeam;
-        return teamWords({ strTeam: other }).some((w) => title.toLowerCase().includes(w));
+        return teamWords({ strTeam: other }).some((w) => normTitle(title).includes(normTitle(w)));
       });
       out.push(game ? Object.assign({}, game, { videoId: vid, clip: title }) : { videoId: vid, club: true, title, teamId: id, teamName: team.name || team.strTeam || "", published: it.date });
       if (out.length >= o.max) break;
@@ -818,30 +912,68 @@ table.lg tr.me td.gd { color: #fff; }
       const ch = String(r.strChannel || "").trim();
       if (!c || !ch || seen.has(c + ch.toLowerCase())) continue;
       seen.add(c + ch.toLowerCase());
-      out.push({ channel: ch, country: c });
+      out.push(r.strLogo ? { channel: ch, country: c, logo: String(r.strLogo) } : { channel: ch, country: c });
     }
     return out;
   }
 
-  /** "UK Sky Sports Premier League, TNT Sports · NO Viaplay"; "" when there is nothing for either country. */
-  function tvLine(list) {
+  /** A game's channels by country, UK first: [{country, channels: [{channel, logo}]}]. A guide's numbering ("892 - ")
+   * off; its test and accessibility feeds left out; a channel listed twice once (its logo kept if either has one). */
+  function tvGroups(list) {
     const by = { UK: [], NO: [] };
     for (const t of list || []) {
       const c = String(t.country || "").toUpperCase();
-      // a guide's numbering ("892 - ") off; its test and accessibility feeds left out
       const ch = String(t.channel || "").replace(/^\d+\s*-\s*/, "").trim();
-      if (!ch || /\b(test|accessibility)\b/i.test(ch)) continue;
-      if (by[c] && !by[c].includes(ch)) by[c].push(ch);
+      if (!ch || /\b(test|accessibility)\b/i.test(ch) || !by[c]) continue;
+      const had = by[c].find((x) => x.channel === ch);
+      if (had) had.logo = had.logo || t.logo || "";
+      else by[c].push({ channel: ch, logo: t.logo || "" });
     }
-    return ["UK", "NO"].filter((c) => by[c].length).map((c) => `${c} ${by[c].join(", ")}`).join(" · ");
+    // a regional version beside its main channel ("BBC Two NI", "BBC Two Wal" with "BBC Two") is the main one
+    for (const c of ["UK", "NO"])
+      by[c] = by[c].filter((x) => !by[c].some((y) => y !== x && x.channel.startsWith(y.channel + " ") && x.channel.length - y.channel.length <= 6));
+    return ["UK", "NO"].filter((c) => by[c].length).map((c) => ({ country: c, channels: by[c] }));
+  }
+
+  /** "UK Sky Sports Premier League, TNT Sports · NO Viaplay"; "" when there is nothing for either country. */
+  function tvLine(list) {
+    return tvGroups(list).map((g) => `${g.country} ${g.channels.map((x) => x.channel).join(", ")}`).join(" · ");
+  }
+
+  // ---- what's on next: the card between highlights ----
+
+  /** "#002244" (or "002244") as [r, g, b]; null when it is no colour. */
+  function hexRgb(hex) {
+    const m = String(hex || "").trim().match(/^#?([0-9a-f]{6})$/i);
+    if (!m) return null;
+    const n = parseInt(m[1], 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+
+  /** The card's colour: the first real colour of the team (#rrggbb), Deep Sea Blue lifted when it has none. */
+  function teamColour(list) {
+    const c = (list || []).find((x) => hexRgb(x));
+    return c ? (String(c).trim().startsWith("#") ? String(c).trim() : `#${String(c).trim()}`) : "#0b2740";
+  }
+
+  /** A clip's title without the score (Mark, 16 Nov 2026: "No scores on the cards"): "Bodø/Glimt - Rosenborg 0-2" is
+   * "Bodø/Glimt - Rosenborg", "Edinburgh Capitals 7 v 3 Aberdeen Lynx" is "Edinburgh Capitals v Aberdeen Lynx". */
+  function spoilerFree(title) {
+    return String(title || "")
+      .replace(/\b\d{1,3}\s+v\s+\d{1,3}\b/gi, "v")
+      .replace(/\s*\b\d{1,3}\s*[-–:]\s*\d{1,3}\b(?!\s*[-./]\s*\d)/g, " ")
+      .replace(/\s{2,}/g, " ")
+      .replace(/\s+,/g, ",")
+      .trim();
   }
 
   const Core = {
     isFinished, isCalledOff, isNotStarted, isLive, kickoff, videoId, shortName, shortLeague, sportSlug, mergeEvents,
-    results, fixtures, inPlayWindow, applyLive, highlights, nextHighlight, tableWindow, teamTable, clock, longDay,
+    results, fixtures, inPlayWindow, applyLive, highlights, tableWindow, teamTable, clock, longDay,
     dayName, when, countdown, scoreLine, statusText, decodeEntities, parseFeed, tickerItems,
     ordinal, ago, teamResult, opponent, teamPosition, teamWords, teamNews, interleave,
-    zonesWhen, zonesTimes, zonesClock, otherZones, tvFromTsdb, tvLine, pickStart, upcoming, clubVideos, mergeHighlights,
+    zonesWhen, zonesTimes, zonesClock, otherZones, tvFromTsdb, tvLine, tvGroups, leastPlayed, upcoming, clubVideos, mergeHighlights,
+    normTitle, titleRule, videoSources, hexRgb, teamColour, spoilerFree,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = Core;
   else root.Core = Core;
@@ -871,10 +1003,14 @@ table.lg tr.me td.gd { color: #fff; }
     hl: [],
     current: null,
     history: [],
-    played: new Set(),
     skip: new Set(),
-    player: null,
+    media: new Map(), // videoId -> its copy downloaded on the house (api/media)
+    colours: new Map(), // team id -> [strColour1, strColour2, strColour3] (the card between highlights)
+    player: null, // set once the highlights start
     playerReady: false,
+    yt: null, // YouTube's player, for highlights not downloaded yet
+    ytReady: false,
+    using: "", // "local" | "yt" | "yt-wait": what the picture is playing from
     sound: false,
     errors: new Map(),
   };
@@ -985,6 +1121,7 @@ table.lg tr.me td.gd { color: #fff; }
       if (j && j.server) {
         state.mode = "server";
         state.serverTv = !!j.tv; // Home Assistant hands over HA Team Scores' channels at api/tv
+        state.logoApi = !!j.logos; // ... and serves badges and channel logos as bugs at api/logo
         if (j.config) state.config = j.config;
         if (!j.key) return fail("The server has no TheSportsDB key. Put SPORTSDB_API_KEY in its .env and start it again.");
       }
@@ -1029,9 +1166,11 @@ table.lg tr.me td.gd { color: #fff; }
 
   async function start() {
     setupKeys();
+    await loadMedia(); // the copies downloaded overnight, before the first highlight is picked (loadSchedules picks it)
     await loadSchedules();
     drawAll();
     loadFeeds().then(() => { drawTicker(true); buildPanels(); }); // the team pages carry the headlines
+    every(10 * 60e3, loadMedia);
     loadClips().then(rebuildHighlights);
     every(30 * 60e3, async () => { await loadClips(); rebuildHighlights(); });
     loadTeams().then(loadTables).then(loadTv).then(buildPanels);
@@ -1117,12 +1256,23 @@ table.lg tr.me td.gd { color: #fff; }
     return (t && t.logo) || url || (t && t.badge) || "";
   };
 
-  /** Each team's YouTube feed (its channel or playlist, given on the settings page), read through the server. */
+  /** The YouTube channels of the settings page. The server's api/videos reaches past a busy channel's latest 15
+   * (Home Assistant and serve.py search the channel for the title rule); a server without it hands over the feed. */
   async function loadClips() {
-    for (const t of state.config.teams || []) {
-      if (!t.youtubeFeed) continue;
+    for (const src of C.videoSources(state.config)) {
       try {
-        state.clips.set(String(t.id), C.parseFeed(await api.rss(t.youtubeFeed)));
+        let items = null;
+        if (state.mode === "server" && state.videosApi !== false) {
+          try {
+            const j = await fetchJson(`api/videos?u=${encodeURIComponent(src.feed)}`, null, null);
+            items = (j.items || []).map((x) => ({ title: x.title, link: `https://www.youtube.com/watch?v=${x.id}`, date: new Date(x.date) }));
+            state.videosApi = true;
+          } catch (err) {
+            if (/\b404\b/.test(String(err && err.message))) state.videosApi = false; // this server has only the feeds
+          }
+        }
+        if (!items) items = C.parseFeed(await api.rss(src.feed));
+        state.clips.set(src.feed, items);
       } catch (_) { /* the old list stays */ }
     }
   }
@@ -1190,7 +1340,7 @@ table.lg tr.me td.gd { color: #fff; }
           const lg = (j.lookup || j.leagues || [])[0] || {};
           season = lg.strCurrentSeason;
           name = lg.strLeague;
-          if (season) { keep("season:" + lid, season); keep("league:" + lid, name); }
+          if (season) { keep("season:" + lid, season); keep("league:" + lid, name); keep("lbadge:" + lid, lg.strBadge || ""); }
         }
         if (!season) continue;
         const t = await api.v1(`lookuptable.php?l=${encodeURIComponent(lid)}&s=${encodeURIComponent(season)}`);
@@ -1198,22 +1348,52 @@ table.lg tr.me td.gd { color: #fff; }
         if (!rows || !rows.length) continue;
         // the group's name only where the league is split (MLS conferences, tournament groups)
         const group = /conference|group|division|pool/i.test(rows[0].strGroup || "") ? rows[0].strGroup : "";
-        tables.push({ league: C.shortLeague(rows[0].strLeague || name), group, rows, mine, season });
+        tables.push({ league: C.shortLeague(rows[0].strLeague || name), group, rows, mine, season, badge: cached("lbadge:" + lid, 24 * 3600e3) || "" });
       } catch (_) { /* this league next time */ }
     }
     if (tables.length) state.tables = tables;
+  }
+
+  /** The colours of every club in the rotation (opponents too), for the card between highlights. */
+  async function loadColours() {
+    const ids = new Set();
+    for (const h of state.hl) for (const id of [h.idHomeTeam, h.idAwayTeam, h.teamId]) if (id) ids.add(String(id));
+    for (const id of ids) {
+      if (state.colours.has(id)) continue;
+      const kept = cached("colours:" + id, 7 * 864e5);
+      if (kept) { state.colours.set(id, kept); continue; }
+      try {
+        const j = await api.v2(`lookup/team/${encodeURIComponent(id)}`);
+        const t = (j.lookup || j.teams || [])[0] || {};
+        const list = [t.strColour1, t.strColour2, t.strColour3].filter(Boolean);
+        state.colours.set(id, list);
+        keep("colours:" + id, list);
+      } catch (_) { /* the card's own colours this time */ }
+    }
+    // a card already up when its clubs' colours came: in them now
+    if (state.current && !$("#bumper").classList.contains("gone")) paintCard(state.current);
   }
 
   function rebuildHighlights() {
     const now = new Date();
     const evs = allEvents();
     const days = opt("highlightDays", 21);
-    // TheSportsDB's highlights, and the clips of the teams given a YouTube channel (for those it has none for)
-    const clubs = (state.config.teams || [])
-      .filter((t) => state.clips.has(String(t.id)))
-      .flatMap((t) => C.clubVideos(state.clips.get(String(t.id)), Object.assign({}, t, { name: (state.teams.get(String(t.id)) || {}).strTeam || t.name }), evs, now, { days, max: 3 }));
-    state.hl = C.mergeHighlights(C.highlights(evs, now, { days, max: opt("maxHighlights", 40) }), clubs).slice(0, opt("maxHighlights", 40));
-    if (state.hl.length && !state.player && !state.noVideo) loadYouTube();
+    // TheSportsDB's highlights, and the videos of the YouTube channels on the settings page (each its own title rule
+    // and days); a channel that is no team's shows its clips under its own name
+    const clubs = C.videoSources(state.config)
+      .filter((src) => state.clips.has(src.feed))
+      .flatMap((src) => {
+        const cfg = (src.team && teamCfg(src.team)) || {};
+        const name = (src.team && ((state.teams.get(String(src.team)) || {}).strTeam || cfg.name)) || src.name || "";
+        const team = Object.assign({}, cfg, { id: src.team || "", name });
+        return C.clubVideos(state.clips.get(src.feed), team, evs, now, { days: Number(src.days) || days, max: 6, titles: src.titles || "" });
+      });
+    // every channel video its own days take stays in (a 30-day channel's clip is not cut for newer ones);
+    // TheSportsDB's newest fill the rest of the rotation
+    const room = Math.max(0, opt("maxHighlights", 40) - clubs.length);
+    state.hl = C.mergeHighlights(C.highlights(evs, now, { days, max: room }), clubs);
+    loadColours();
+    if (state.hl.length && !state.player && !state.noVideo) startPlayer();
     if (!videoMode()) showSlate(state.noVideo);
   }
 
@@ -1221,69 +1401,75 @@ table.lg tr.me td.gd { color: #fff; }
   const videoMode = () => !!(state.current && state.playerReady && state.hl.length);
 
   // ---------- the player ----------
-  function loadYouTube() {
+  // A highlight plays from the copy the house downloaded overnight (api/media) when it has one, else from YouTube
+  // (Mark, 16 Nov 2026: the NFL's highlights would not play from YouTube on the page). The order: the one this
+  // screen has played least first, the newest among equals (Mark: "play the one with the least amount of plays first").
+
+  /** The videos downloaded on the house: videoId -> address beside the page. */
+  async function loadMedia() {
+    if (state.mode !== "server" || state.mediaApi === false) return;
+    try {
+      const j = await fetchJson("api/media", null, null);
+      state.media = new Map(Object.entries(j.videos || {}));
+      state.mediaApi = true;
+    } catch (err) {
+      if (/\b404\b/.test(String(err && err.message))) state.mediaApi = false; // a server without downloads
+    }
+  }
+  const localUrl = (h) => (h && state.media.get(h.videoId)) || "";
+
+  /** How often this screen has played each video of the rotation (kept in the browser). */
+  const plays = () => cached("plays", 60 * 864e5) || {};
+  function countPlay(id) {
+    const now = new Set(state.hl.map((h) => h.videoId));
+    const kept = Object.fromEntries(Object.entries(plays()).filter(([k]) => now.has(k))); // gone from the rotation: forgotten
+    kept[id] = (kept[id] || 0) + 1;
+    keep("plays", kept);
+  }
+
+  /** Once there are highlights: downloaded copies play at once, YouTube's player loads alongside for the rest. */
+  function startPlayer() {
     if (location.protocol === "file:") {
       state.noVideo = "Highlights need the page served over http(s): run serve.py, or host the page.";
       return;
     }
-    state.player = "loading";
-    window.onYouTubeIframeAPIReady = makePlayer;
+    state.player = "started";
+    setupLocal();
+    state.playerReady = true;
+    loadYouTube();
+    playNext();
+  }
+
+  function loadYouTube() {
+    window.onYouTubeIframeAPIReady = makeYouTube;
     const s = document.createElement("script");
     s.src = "https://www.youtube.com/iframe_api";
-    s.onerror = () => { state.player = null; state.noVideo = "YouTube could not be reached."; showSlate(state.noVideo); };
+    s.onerror = () => { state.ytFailed = true; if (state.using === "yt-wait") playNext(); };
     document.head.appendChild(s);
   }
 
-  /** The clips this screen played in the last 12 hours (kept in the browser; none in a private window or a fresh
-   * WebView, which is fine: the start is random anyway). */
-  function recentlyPlayed() {
-    const kept = cached("played", 12 * 3600e3);
-    const now = Date.now();
-    return new Set(Object.entries(kept || {}).filter(([, t]) => now - t < 12 * 3600e3).map(([id]) => id));
-  }
-  function rememberPlayed(id) {
-    const now = Date.now();
-    const kept = Object.fromEntries(Object.entries(cached("played", 12 * 3600e3) || {}).filter(([, t]) => now - t < 12 * 3600e3));
-    kept[id] = now;
-    keep("played", kept);
-  }
-
   let watchdog = null;
-  function makePlayer() {
-    // not the same clip every time the page opens: a random one this screen has not played in the last 12 hours
-    const recent = recentlyPlayed();
-    for (const id of recent) state.played.add(id);
-    const first = C.pickStart(state.hl, recent, Math.random(), state.skip) || C.nextHighlight(state.hl, state.played, null, state.skip);
-    if (!first) return showSlate();
-    state.current = first;
-    state.history.push(first);
-    drawLowerVideo(first);
-    showSlate(null, first);
+  function makeYouTube() {
     const muted = params.get("mute") === "1";
-    state.player = new YT.Player("player", {
-      width: 1472, height: 1008, videoId: first.videoId, // taller than the picture: see #player in index.html
+    state.yt = new YT.Player("player", {
+      width: 1472, height: 1008, // taller than the picture: see #player in index.html
       playerVars: {
         autoplay: 1, controls: 0, rel: 0, fs: 0, disablekb: 1, iv_load_policy: 3, modestbranding: 1, playsinline: 1,
         cc_load_policy: 0, origin: location.origin, mute: muted ? 1 : 0,
       },
       events: {
         onReady: (ev) => {
-          state.playerReady = true;
-          if (!muted) { try { ev.target.unMute(); } catch (_) { /* old player */ } }
-          ev.target.playVideo();
-          checkAutoplay();
+          state.ytReady = true;
+          if (!muted && !state.userMuted) { try { ev.target.unMute(); } catch (_) { /* old player */ } }
+          if (state.using === "yt-wait" && state.current) playYouTube(state.current);
+          else ytHidden(true);
         },
         onStateChange: (ev) => {
+          if (state.using !== "yt") return;
           if (ev.data === YT.PlayerState.PLAYING) {
-            clearTimeout(watchdog);
             // YouTube turns captions on for muted autoplay; the lower third says what the clip is
             try { ev.target.unloadModule("captions"); ev.target.unloadModule("cc"); } catch (_) { /* none */ }
-            if (state.current) {
-              state.played.add(state.current.videoId);
-              rememberPlayed(state.current.videoId);
-              drawLowerVideo(state.current);
-            }
-            hideSlate();
+            started();
           } else if (ev.data === YT.PlayerState.ENDED) {
             playNext();
           } else if (ev.data === YT.PlayerState.UNSTARTED || ev.data === YT.PlayerState.BUFFERING) {
@@ -1292,6 +1478,7 @@ table.lg tr.me td.gd { color: #fff; }
         },
         onError: () => {
           // 101 / 150: the owner does not allow it outside YouTube; 100: removed; 2 / 5: bad id or player trouble
+          if (state.using !== "yt") return;
           if (state.current) state.skip.add(state.current.videoId);
           playNext();
         },
@@ -1299,16 +1486,134 @@ table.lg tr.me td.gd { color: #fff; }
     });
   }
 
+  function setupLocal() {
+    const v = $("#local");
+    v.addEventListener("playing", () => { if (state.using === "local") started(); });
+    v.addEventListener("ended", () => { if (state.using === "local") playNext(); });
+    v.addEventListener("waiting", () => { if (state.using === "local") arm(); });
+    v.addEventListener("error", () => {
+      if (state.using !== "local" || !state.current) return;
+      state.media.delete(state.current.videoId); // the copy has gone (deleted overnight): YouTube instead
+      playYouTube(state.current);
+    });
+  }
+
+  // ---- what's on next ----
+  // Between highlights, for four seconds while the next one loads: the picture split in the two clubs' colours, their
+  // badges, the competition and the day - never the score (Mark, 16 Nov 2026: "club logos and colours flashing up
+  // between videos for the ones we are going to watch next", "No scores on the cards", "What's on next").
+  const CARD_MS = 4000;
+  let goTimer = null;
+
+  /** The card in my team's colour (Mark: "the colour of my team rather then both"): the one of mine in the game, or
+   * the club whose clip it is. Both badges stay on it. */
+  function paintCard(h) {
+    const card = $("#bumper");
+    const mine = new Set((state.config.teams || []).map((t) => String(t.id)));
+    const id = h.club ? String(h.teamId || "") : [h.idHomeTeam, h.idAwayTeam].map(String).find((x) => mine.has(x)) || String(h.idHomeTeam || "");
+    const info = state.teams.get(id) || {};
+    const colour = C.teamColour(state.colours.get(id) || [info.strColour1]);
+    $(".half.home", card).style.background = colour;
+    $(".half.away", card).style.background = colour;
+  }
+
+  function showCard(h) {
+    const card = $("#bumper");
+    const home = $(".half.home", card);
+    const away = $(".half.away", card);
+    const setBadge = (el, url) => {
+      const im = $(".cb", el);
+      im.hidden = !url;
+      if (url) im.src = img(url, "medium");
+    };
+    let sub;
+    if (h.club) {
+      const info = state.teams.get(String(h.teamId)) || {};
+      card.classList.add("single");
+      setBadge(home, logoOf(h.teamId, info.strBadge));
+      $(".t", card).textContent = C.spoilerFree(h.title);
+      $(".lb", card).innerHTML = "";
+      sub = `${h.teamName}${h.published ? `  ·  ${C.longDay(h.published, tz())}` : ""}`;
+    } else {
+      card.classList.remove("single");
+      setBadge(home, logoOf(h.idHomeTeam, h.strHomeTeamBadge));
+      setBadge(away, logoOf(h.idAwayTeam, h.strAwayTeamBadge));
+      $(".t", card).textContent = `${h.strHomeTeam} v ${h.strAwayTeam}`;
+      $(".lb", card).innerHTML = leagueBug(h, "cardb");
+      sub = [C.shortLeague(h.strLeague), C.longDay(C.kickoff(h), tz())].filter(Boolean).join("  ·  ");
+    }
+    $(".s", card).textContent = sub;
+    paintCard(h);
+    card.classList.remove("gone", "on");
+    void card.offsetWidth; // the animation again from the start
+    card.classList.add("on");
+    fitText($(".t", card), 58, 30);
+  }
+  const hideCard = () => $("#bumper").classList.add("gone");
+
+  /** The lower third while the card is up: the game without its score. */
+  function drawLowerNext(h) {
+    if (h.club) {
+      const info = state.teams.get(String(h.teamId)) || {};
+      setLower(h.teamName, logoOf(h.teamId, info.strBadge), esc(C.spoilerFree(h.title)), "What's on next", null);
+      return;
+    }
+    const v = (e, short) => `${esc(short ? C.shortName(e.strHomeTeam) : e.strHomeTeam)} v ${esc(short ? C.shortName(e.strAwayTeam) : e.strAwayTeam)}`;
+    setLower(C.shortLeague(h.strLeague), logoOf(h.idHomeTeam, h.strHomeTeamBadge), v(h), `What's on next  ·  ${C.longDay(C.kickoff(h), tz())}`,
+      logoOf(h.idAwayTeam, h.strAwayTeamBadge), h.strLeagueBadge, v(h, true));
+  }
+
+  /** The picture has started: count the play once, say what it is. */
+  function started() {
+    clearTimeout(watchdog);
+    hideCard();
+    if (state.current && !state.counted) {
+      state.counted = true;
+      countPlay(state.current.videoId);
+    }
+    if (state.current) drawLowerVideo(state.current);
+    hideSlate();
+  }
+
   function arm() {
     clearTimeout(watchdog);
     watchdog = setTimeout(() => playNext(), 30000); // stuck loading: move on (not marked bad; tried again later)
   }
 
+  const ytHidden = (hide) => { const f = document.getElementById("player"); if (f) f.style.visibility = hide ? "hidden" : ""; };
+
+  function playLocal(h) {
+    state.using = "local";
+    try { if (state.yt && state.yt.stopVideo) state.yt.stopVideo(); } catch (_) { /* not ready */ }
+    ytHidden(true);
+    const v = $("#local");
+    v.hidden = false;
+    v.muted = params.get("mute") === "1" || !!state.userMuted;
+    if (v.getAttribute("src") !== localUrl(h) || v.error) v.src = localUrl(h); // (loading already behind the card)
+    const p = v.play();
+    const quiet = () => { $("#sound").hidden = false; };
+    if (p && p.then) {
+      p.then(() => { if (v.muted) quiet(); else state.sound = true; })
+        .catch(() => { v.muted = true; v.play().catch(() => {}); quiet(); }); // sound refused before a key press
+    }
+  }
+
+  function playYouTube(h) {
+    state.using = state.ytReady ? "yt" : "yt-wait";
+    const v = $("#local");
+    v.pause();
+    v.hidden = true;
+    if (!state.ytReady) return; // played when YouTube's player is ready
+    ytHidden(false);
+    state.yt.loadVideoById(h.videoId);
+    if (!state.ytChecked) { state.ytChecked = true; checkAutoplay(); }
+  }
+
   /** Browsers refuse sound before the viewer has pressed anything: start muted then, and say how to get sound. */
   function checkAutoplay() {
     setTimeout(() => {
-      const p = state.player;
-      if (!p || !p.getPlayerState) return;
+      const p = state.yt;
+      if (state.using !== "yt" || !p || !p.getPlayerState) return;
       const st = p.getPlayerState();
       if (st !== YT.PlayerState.PLAYING && st !== YT.PlayerState.BUFFERING) {
         p.mute();
@@ -1322,64 +1627,291 @@ table.lg tr.me td.gd { color: #fff; }
     }, 2500);
   }
 
-  function playNext(back) {
-    if (!state.player || !state.playerReady) return;
+  function playNext(back, pick) {
+    if (!state.playerReady) return;
     clearTimeout(watchdog);
-    let h = null;
-    if (back) {
+    clearTimeout(goTimer);
+    let h = pick || null; // chosen on the picker
+    if (!h && back) {
       state.history.pop(); // the one playing now
       h = state.history.pop() || null;
     }
-    h = h || C.nextHighlight(state.hl, state.played, state.current && state.current.videoId, state.skip);
+    // what can play: not refused before, and downloaded unless YouTube's player is there
+    const can = (x) => !state.skip.has(x.videoId) && (localUrl(x) || !state.ytFailed);
+    h = h || C.leastPlayed(state.hl.filter(can), plays(), state.current && state.current.videoId);
     if (!h) {
-      // nothing left that plays: stop the player, the board and the results take over
+      // nothing left that plays: stop, the board and the results take over
       state.current = null;
-      try { state.player.stopVideo(); } catch (_) { /* gone */ }
+      state.using = "";
+      try { if (state.yt && state.yt.stopVideo) state.yt.stopVideo(); } catch (_) { /* gone */ }
+      $("#local").pause();
+      hideCard();
       showSlate();
       drawLowerIdle();
       return;
     }
+    // between two highlights the card stays four seconds; the first one starts as soon as it can (the card covers
+    // the loading either way, and goes when the picture starts)
+    const between = state.history.length > 0;
+    state.using = "card"; // the old picture's events are not ours now
+    $("#local").pause();
+    try { if (state.yt && state.yt.stopVideo) state.yt.stopVideo(); } catch (_) { /* not ready */ }
     state.current = h;
+    state.counted = false;
     state.history.push(h);
     if (state.history.length > 50) state.history.shift();
-    drawLowerVideo(h);
-    showSlate(null, h);
-    state.player.loadVideoById(h.videoId);
-    arm();
+    drawLowerNext(h);
+    hideSlate();
+    showCard(h);
+    if (localUrl(h)) {
+      const v = $("#local"); // the copy starts loading behind the card
+      if (v.getAttribute("src") !== localUrl(h)) { v.preload = "auto"; v.src = localUrl(h); }
+    }
+    goTimer = setTimeout(() => {
+      if (state.current !== h) return;
+      if (localUrl(h)) playLocal(h);
+      else playYouTube(h);
+      arm();
+    }, between ? CARD_MS : 0);
   }
 
   function soundOn() {
-    const p = state.player;
     $("#sound").hidden = true;
+    state.userMuted = false;
+    const v = $("#local");
+    if (state.using === "local") {
+      v.muted = false;
+      v.volume = 1;
+      if (v.paused) v.play().catch(() => {});
+    }
+    const p = state.yt;
     if (p && p.unMute) {
       p.unMute();
       p.setVolume && p.setVolume(100);
-      if (p.getPlayerState && p.getPlayerState() !== YT.PlayerState.PLAYING) p.playVideo();
+      if (state.using === "yt" && p.getPlayerState && p.getPlayerState() !== YT.PlayerState.PLAYING) p.playVideo();
     }
     state.sound = true;
+  }
+
+  function muted() {
+    if (state.using === "local") return $("#local").muted;
+    const p = state.yt;
+    return !p || !p.isMuted || p.isMuted();
+  }
+
+  // ---- pick a highlight: a long press of OK ----
+  // Mark, 17 Nov 2026: "4 long press, we need to remember that there is the 5 click skip". A short OK is sound on,
+  // five within four seconds the next highlight; holding OK opens a grid of the rotation (no scores): the arrows move,
+  // OK plays the one chosen (after its card), Back closes it, and it closes itself after 30 s untouched. A held OK
+  // shows itself as the key repeating, or (where the remote sends key-up) as no key-up within 0.65 s.
+  const picker = { open: false, items: [], at: 0, idle: null };
+  const COLS = 4;
+
+  function openPicker() {
+    const can = (x) => !state.skip.has(x.videoId) && (localUrl(x) || !state.ytFailed);
+    picker.items = state.hl.filter(can);
+    if (!picker.items.length) return;
+    picker.at = Math.max(0, picker.items.findIndex((h) => state.current && h.videoId === state.current.videoId));
+    const plays = (() => { try { return cached("plays", 60 * 864e5) || {}; } catch (_) { return {}; } })();
+    const tile = (h, i) => {
+      const now = state.current && h.videoId === state.current.videoId;
+      const fresh = !Number(plays[h.videoId]);
+      let badges, title, sub;
+      if (h.club) {
+        const info = state.teams.get(String(h.teamId)) || {};
+        badges = badge(logoOf(h.teamId, info.strBadge), "small");
+        title = C.spoilerFree(h.title);
+        sub = `${esc(h.teamName)}${h.published ? ` &middot; ${esc(C.dayName(h.published, new Date(), tz()))}` : ""}`;
+      } else {
+        badges = `${badge(logoOf(h.idHomeTeam, h.strHomeTeamBadge), "small")}<span class="v">v</span>${badge(logoOf(h.idAwayTeam, h.strAwayTeamBadge), "small")}`;
+        title = `${C.shortName(h.strHomeTeam)} v ${C.shortName(h.strAwayTeam)}`;
+        sub = `${leagueBug(h)}${esc(C.shortLeague(h.strLeague))} &middot; ${esc(C.dayName(C.kickoff(h), new Date(), tz()))}`;
+      }
+      return `<div class="tile${i === picker.at ? " on" : ""}" data-i="${i}">${now ? '<i class="tag now">On now</i>' : fresh ? '<i class="tag">New</i>' : ""}
+        <div class="bd">${badges}</div><div class="tt">${esc(title)}</div><div class="ts">${sub}</div></div>`;
+    };
+    const el = $("#picker");
+    $(".grid", el).innerHTML = picker.items.map(tile).join("");
+    el.hidden = false;
+    picker.open = true;
+    focusTile();
+    pickerAwake();
+  }
+
+  function closePicker() {
+    picker.open = false;
+    clearTimeout(picker.idle);
+    $("#picker").hidden = true;
+  }
+
+  const pickerAwake = () => { clearTimeout(picker.idle); picker.idle = setTimeout(closePicker, 30000); };
+
+  function focusTile() {
+    const tiles = [...document.querySelectorAll("#picker .tile")];
+    tiles.forEach((t, i) => t.classList.toggle("on", i === picker.at));
+    const t = tiles[picker.at];
+    if (t && t.scrollIntoView) t.scrollIntoView({ block: "nearest" });
+  }
+
+  function movePicker(by) {
+    const n = picker.items.length;
+    if (!n) return;
+    const to = picker.at + by;
+    if (Math.abs(by) === 1) picker.at = (to + n) % n; // left and right wrap round
+    else if (to >= 0 && to < n) picker.at = to; // up and down stop at the edge
+    else if (by > 0) picker.at = n - 1;
+    else picker.at = 0;
+    focusTile();
+  }
+
+  function choosePicker(i) {
+    if (Date.now() < (picker.quietUntil || 0)) return; // the lifting of the finger that opened it
+    const h = picker.items[i === undefined ? picker.at : i];
+    closePicker();
+    if (h) playNext(false, h);
+  }
+
+  function pickerKey(ev, k, isOk) {
+    ev.preventDefault();
+    if (ev.repeat) return; // the OK still held from opening it, or a held arrow
+    pickerAwake();
+    if (k === "ArrowRight") movePicker(1);
+    else if (k === "ArrowLeft") movePicker(-1);
+    else if (k === "ArrowDown") movePicker(COLS);
+    else if (k === "ArrowUp") movePicker(-COLS);
+    else if (isOk) choosePicker();
+    else if (["Escape", "Backspace", "BrowserBack", "GoBack"].includes(k)) closePicker();
+  }
+
+  let oks = []; // when OK was pressed lately: five within four seconds skips to the next game
+  let okHeld = null; // the timer of an OK being held
+  let okRepeats = 0;
+  let keyupsSeen = false; // this remote sends key-up: a hold can be timed
+  function longPress() {
+    clearTimeout(okHeld);
+    okHeld = null;
+    oks.pop(); // the held press is no click towards the five
+    if (!picker.open) openPicker();
+  }
+
+  /** An OK press or a tap: five within four seconds is the next highlight (true when it was the fifth). */
+  function click() {
+    const now = Date.now();
+    oks = oks.filter((t) => now - t < 4000).concat(now);
+    if (oks.length < 5) return false;
+    oks = [];
+    clearTimeout(okHeld);
+    playNext();
+    return true;
   }
 
   function setupKeys() {
     addEventListener("keydown", (ev) => {
       const k = ev.key;
+      const isOk = k === "Enter" || k === "Select";
+      if (picker.open) return pickerKey(ev, k, isOk);
+      if (isOk && ev.repeat) {
+        // OK held: the remote repeats the key
+        if (++okRepeats >= 2) longPress();
+        ev.preventDefault();
+        return;
+      }
+      if (isOk) {
+        okRepeats = 0;
+        clearTimeout(okHeld);
+        if (keyupsSeen) okHeld = setTimeout(longPress, 650);
+        // Mark, 16 Nov 2026: "pressing ok 5 times skips to the next game" (a TV remote's arrows may not reach the page)
+        if (click()) {
+          ev.preventDefault();
+          return;
+        }
+      }
       if (k === "ArrowRight" || k === "MediaTrackNext" || k === "n") { playNext(); ev.preventDefault(); }
       else if (k === "ArrowLeft" || k === "MediaTrackPrevious" || k === "p") { playNext(true); ev.preventDefault(); }
-      else if (k === "Enter" || k === " " || k === "MediaPlayPause" || k === "m") {
-        const p = state.player;
-        if (k === "m" && p && p.isMuted && !p.isMuted()) {
-          p.mute();
+      else if (isOk || k === " " || k === "MediaPlayPause" || k === "m") {
+        if (k === "m" && !muted()) {
+          state.userMuted = true;
+          $("#local").muted = true;
+          try { if (state.yt && state.yt.mute) state.yt.mute(); } catch (_) { /* not ready */ }
           $("#sound").hidden = false;
         } else soundOn();
         ev.preventDefault();
       }
     });
-    addEventListener("pointerdown", soundOn);
+    addEventListener("keyup", (ev) => {
+      if (ev.key === "Enter" || ev.key === "Select") {
+        keyupsSeen = true;
+        clearTimeout(okHeld);
+        okHeld = null;
+        okRepeats = 0;
+      }
+    });
+    // taps and touches (Mark, 17 Nov 2026: "Didn't work in mobile browser or nevermore app"): Nevermore's browser keeps
+    // the remote's keys for its pointer - its OK reaches the page as a tap where the pointer is, a held OK is the app's
+    // own - and a phone has no keys. So a tap counts towards the five like OK; a finger held still on the picture for
+    // 0.6 s opens the picker; a tap on the white bar opens it too (the way in with Nevermore's pointer).
+    let touchHold = null;
+    let touchFrom = null;
+    let openedByTouch = false;
+    const endTouch = () => {
+      clearTimeout(touchHold);
+      touchHold = null;
+      touchFrom = null;
+      if (openedByTouch) {
+        openedByTouch = false;
+        picker.quietUntil = Date.now() + 450;
+      }
+    };
+    addEventListener("pointerdown", (ev) => {
+      soundOn();
+      if (picker.open) return; // a tile's own tap chooses it
+      if (ev.target && ev.target.closest && ev.target.closest("#lower")) {
+        openPicker();
+        return;
+      }
+      touchFrom = { x: ev.clientX, y: ev.clientY };
+      clearTimeout(touchHold);
+      touchHold = setTimeout(() => {
+        touchHold = null;
+        openedByTouch = true;
+        longPress();
+      }, 600);
+      click();
+    });
+    addEventListener("pointermove", (ev) => {
+      if (touchFrom && Math.hypot(ev.clientX - touchFrom.x, ev.clientY - touchFrom.y) > 14) {
+        clearTimeout(touchHold); // a finger moving is no hold
+        touchHold = null;
+      }
+    });
+    addEventListener("pointerup", endTouch);
+    addEventListener("pointercancel", endTouch);
+    addEventListener("contextmenu", (ev) => ev.preventDefault()); // a long touch is ours, not the browser's menu
+    // a tile tapped or clicked (a phone, Nevermore's pointer, a computer)
+    $("#picker").addEventListener("click", (ev) => {
+      const t = ev.target.closest && ev.target.closest(".tile");
+      if (t) choosePicker(Number(t.dataset.i));
+    });
   }
 
   // ---------- drawing ----------
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   const img = (url, size) => (url ? (size && /thesportsdb\.com\//.test(url) ? `${url}/${size}` : url) : "");
   const badge = (url, size) => (url ? `<img src="${esc(img(url, size || "tiny"))}" alt="" onerror="this.style.visibility='hidden'">` : "<span></span>");
+  /** A league badge or a channel logo as a "bug": on Home Assistant trimmed and set on its own chip (api/logo, so a
+   * dark logo and a white one both read); elsewhere the picture itself. */
+  const bugSrc = (u) => (!u ? "" : state.logoApi ? `api/logo?u=${encodeURIComponent(u)}` : img(u, "small"));
+  const bug = (u, cls, alt) => (u ? `<img class="bug ${cls || ""}" src="${esc(bugSrc(u))}" alt="${esc(alt || "")}" onerror="this.remove()">` : "");
+  const leagueBug = (e, cls) => (e && e.strLeagueBadge ? bug(e.strLeagueBadge, cls || "lgb", C.shortLeague(e.strLeague)) : "");
+  /** A game's UK and Norwegian channels: each one's logo, its name where it has none (or the logo will not load). */
+  function tvHtml(e) {
+    const swap = "const s=document.createElement('span');s.className='chn';s.textContent=this.alt;this.replaceWith(s)";
+    return C.tvGroups(state.tv.get(String(e.idEvent)))
+      .map((g) => `<span class="cc">${esc(g.country)}</span>${g.channels
+        .map((x) => (x.logo ? `<img class="bug ch" src="${esc(bugSrc(x.logo))}" alt="${esc(x.channel)}" onerror="${swap}">` : `<span class="chn">${esc(x.channel)}</span>`))
+        .join("")}`)
+      .join("");
+  }
 
   /** Scale the 1920 x 1080 canvas to the screen and centre it. The size comes from the clipping box (#screen, fixed
    * to the viewport), not innerWidth, which a WebView can report wider than the screen. */
@@ -1441,37 +1973,64 @@ table.lg tr.me td.gd { color: #fff; }
     $("#slate").classList.add("gone");
   }
 
-  function setLower(tab, home, line1Html, line2, away) {
+  /** Smaller type until [el]'s text fits its box, down to [min] px; whether it fits. */
+  function fitText(el, max, min) {
+    let size = max;
+    el.style.fontSize = `${size}px`;
+    while (el.scrollWidth > el.clientWidth + 1 && size > min) {
+      size -= 2;
+      el.style.fontSize = `${size}px`;
+    }
+    return el.scrollWidth <= el.clientWidth + 1;
+  }
+
+  function setLower(tab, home, line1Html, line2, away, tabBadge, line1Short) {
     const lo = $("#lower");
-    $(".tab", lo).textContent = tab;
+    const tb = $(".tab", lo);
+    tb.innerHTML = `${bug(tabBadge, "tabb", "")}<span>${esc(tab)}</span>`;
     const hb = $(".hb", lo);
     const ab = $(".ab", lo);
     hb.hidden = !home;
     ab.hidden = !away;
     if (home) hb.src = img(home, "small");
     if (away) ab.src = img(away, "small");
-    $(".l1", lo).innerHTML = line1Html;
+    const l1 = $(".l1", lo);
+    l1.innerHTML = line1Html;
     $(".l2", lo).textContent = line2;
+    // the whole game on its line (Mark, 16 Nov 2026: "make sure the score and team names of the game that is being
+    // showed fits"): smaller type first, then the teams' short names
+    if (!fitText(l1, 40, 28) && line1Short) {
+      l1.innerHTML = line1Short;
+      fitText(l1, 40, 24);
+    }
+    fitText($(".l2", lo), 23, 17);
+    fitText($("span", tb), 28, 18);
+    // the league's badge takes its width once it has loaded: fit the name again then
+    const tbImg = $("img", tb);
+    if (tbImg && !tbImg.complete) tbImg.onload = () => fitText($("span", tb), 28, 18);
   }
 
-  function lineHtml(e) {
+  function lineHtml(e, short) {
     const hs = e.intHomeScore;
     const as = e.intAwayScore;
     const scored = hs !== null && hs !== undefined && hs !== "" && as !== null && as !== undefined && as !== "";
-    return scored
-      ? `${esc(e.strHomeTeam)}<span class="sc">${esc(hs)}–${esc(as)}</span>${esc(e.strAwayTeam)}`
-      : `${esc(e.strHomeTeam)} v ${esc(e.strAwayTeam)}`;
+    const home = short ? C.shortName(e.strHomeTeam) : e.strHomeTeam;
+    const away = short ? C.shortName(e.strAwayTeam) : e.strAwayTeam;
+    return scored ? `${esc(home)}<span class="sc">${esc(hs)}–${esc(as)}</span>${esc(away)}` : `${esc(home)} v ${esc(away)}`;
   }
 
+  /** The white bar under a playing highlight: the game without its score (Mark, 17 Nov 2026: "on the white bar under
+   * the live game, that's the one that should be hidden"; the side column keeps its scores). */
   function drawLowerVideo(h) {
     if (h.club) {
       const info = state.teams.get(String(h.teamId)) || {};
-      setLower(h.teamName, logoOf(h.teamId, info.strBadge), esc(h.title), `Club video  \u00b7  ${C.longDay(h.published, tz())}`, null);
+      setLower(h.teamName, logoOf(h.teamId, info.strBadge), esc(C.spoilerFree(h.title)), `Club video  \u00b7  ${C.longDay(h.published, tz())}`, null);
       return;
     }
     const d = C.kickoff(h);
     const bits = ["Highlights", C.longDay(d, tz()), h.strVenue, h.intRound && /league|liga|serien|mls|nhl|nfl|wnba/i.test(h.strLeague) ? `Round ${h.intRound}` : ""];
-    setLower(C.shortLeague(h.strLeague), logoOf(h.idHomeTeam, h.strHomeTeamBadge), lineHtml(h), bits.filter(Boolean).join("  ·  "), logoOf(h.idAwayTeam, h.strAwayTeamBadge));
+    const v = (short) => `${esc(short ? C.shortName(h.strHomeTeam) : h.strHomeTeam)} v ${esc(short ? C.shortName(h.strAwayTeam) : h.strAwayTeam)}`;
+    setLower(C.shortLeague(h.strLeague), logoOf(h.idHomeTeam, h.strHomeTeamBadge), v(false), bits.filter(Boolean).join("  \u00b7  "), logoOf(h.idAwayTeam, h.strAwayTeamBadge), h.strLeagueBadge, v(true));
   }
 
   let idleAt = 0;
@@ -1486,7 +2045,9 @@ table.lg tr.me td.gd { color: #fff; }
       C.shortLeague(e.strLeague),
       logoOf(e.idHomeTeam, e.strHomeTeamBadge), lineHtml(e),
       [C.statusText(e) === "FT" ? "Full time" : C.statusText(e), C.longDay(C.kickoff(e), tz()), e.strVenue].filter(Boolean).join("  \u00b7  "),
-      logoOf(e.idAwayTeam, e.strAwayTeamBadge)
+      logoOf(e.idAwayTeam, e.strAwayTeamBadge),
+      e.strLeagueBadge,
+      lineHtml(e, true)
     );
   }
 
@@ -1510,7 +2071,7 @@ table.lg tr.me td.gd { color: #fff; }
     $(".count b", box).textContent = cd.big;
     $(".count small", box).textContent = cd.small;
     const day = C.dayName(C.kickoff(e), now, zones()[0] && zones()[0].tz);
-    $(".head", box).textContent = `${idx === 0 ? "Next up" : `${idx + 1} of ${list.length}`} · ${day}`;
+    $(".head", box).innerHTML = `${leagueBug(e, "nx")}${esc(`${idx === 0 ? "Next up" : `${idx + 1} of ${list.length}`} · ${day}`)}`;
     $(".game", box).textContent = C.scoreLine(e, true);
     $(".sub", box).textContent = zones().length ? C.zonesTimes(C.kickoff(e), zones()) : C.when(C.kickoff(e), now, tz());
   }
@@ -1542,16 +2103,16 @@ table.lg tr.me td.gd { color: #fff; }
       const o = vs(last);
       const mark = r && r.mark ? r.mark : C.statusText(last);
       const score = r ? `${r.us}–${r.them} ` : "";
-      blocks.push(`<div class="tb"><h4>Last game</h4><div class="g"><span class="rk ${esc(mark)}">${esc(mark)}</span>${badge(o.badge)}<span>${esc(score + o.text)}</span></div><div class="s">${esc(C.dayName(C.kickoff(last), now, tz()))} &middot; ${esc(C.shortLeague(last.strLeague))}</div></div>`);
+      blocks.push(`<div class="tb"><h4>Last game</h4><div class="g"><span class="rk ${esc(mark)}">${esc(mark)}</span>${badge(o.badge)}<span>${esc(score + o.text)}</span></div><div class="s">${esc(C.dayName(C.kickoff(last), now, tz()))} &middot; ${leagueBug(last)}${esc(C.shortLeague(last.strLeague))}</div></div>`);
     }
     if (next) {
       const o = vs(next);
       const cd = C.countdown(C.kickoff(next) - now);
-      const tv = tvText(next);
-      blocks.push(`<div class="tb"><h4>Next game</h4><div class="g"><span class="rk">${esc(cd.big)}</span>${badge(o.badge)}<span>${esc(o.text)}</span></div><div class="s">${esc(kickoffText(next, now))}</div>${tv ? `<div class="tv"><i>TV</i>${esc(tv)}</div>` : `<div class="s">${esc(C.shortLeague(next.strLeague))}</div>`}</div>`);
+      const tv = tvHtml(next);
+      blocks.push(`<div class="tb"><h4>Next game</h4><div class="g"><span class="rk">${esc(cd.big)}</span>${badge(o.badge)}<span>${esc(o.text)}</span></div><div class="s">${esc(kickoffText(next, now))}</div>${tv ? `<div class="tv">${tv}</div>` : `<div class="s">${leagueBug(next)}${esc(C.shortLeague(next.strLeague))}</div>`}</div>`);
     }
     if (pos)
-      blocks.push(`<div class="tb"><h4>League</h4><div class="pos"><b>${esc(C.ordinal(pos.rank))}</b><span>${esc(pos.points)} pts &middot; ${esc(pos.played)} played</span></div><div class="s">${esc(pos.league)}${pos.group ? " &middot; " + esc(pos.group) : ""}</div></div>`);
+      blocks.push(`<div class="tb"><h4>League</h4><div class="pos"><b>${esc(C.ordinal(pos.rank))}</b><span>${esc(pos.points)} pts &middot; ${esc(pos.played)} played</span></div><div class="s">${bug(pos.badge, "lgb", "")}${esc(pos.league)}${pos.group ? " &middot; " + esc(pos.group) : ""}</div></div>`);
     if (news.length)
       blocks.push(`<div class="tb"><h4>Latest news</h4>${news
         .map((n) => `<div class="news">${esc(n.item.title)}</div><div class="s">${esc(n.feed)}${n.item.date ? " &middot; " + esc(C.ago(n.item.date, now)) : ""}</div>`)
@@ -1559,7 +2120,7 @@ table.lg tr.me td.gd { color: #fff; }
     if (!blocks.length) blocks.push(`<div class="tb"><div class="none">No games found in the last three weeks or coming up.</div></div>`);
     const crest = logoOf(id, info.strBadge);
     const logo = crest ? `<img src="${esc(img(crest, "small"))}" alt="" onerror="this.style.visibility='hidden'">` : "";
-    return `<div class="team-h">${logo}<div><div class="n">${esc(name)}</div><div class="l">${esc(league || info.strSport || "")}</div></div></div>${blocks.join("")}`;
+    return `<div class="team-h">${logo}<div><div class="n">${esc(name)}</div><div class="l">${leagueBug(last || next)}${esc(league || info.strSport || "")}</div></div></div>${blocks.join("")}`;
   }
 
   function buildPanels() {
@@ -1581,14 +2142,14 @@ table.lg tr.me td.gd { color: #fff; }
     };
     // a coming game: when in both houses, then its UK and Norwegian channels (the competition when none are known)
     const tvFoot = (e) => {
-      const tv = tvText(e);
-      return tv ? `<div class="tv"><i>TV</i>${esc(tv)}</div>` : `<div class="tv">${esc(C.shortLeague(e.strLeague))}</div>`;
+      const tv = tvHtml(e);
+      return tv ? `<div class="tv">${tv}</div>` : `<div class="tv">${leagueBug(e)}${esc(C.shortLeague(e.strLeague))}</div>`;
     };
     const fixLi = (e) => gameLi(e, `<b>${esc(kickoffText(e, now))}</b>`, "", tvFoot(e));
     const fix = C.upcoming(evs, now);
     const res = C.results(evs, now, 14).slice(0, PER);
     if (res.length) {
-      pages.push(`<div class="ph">Latest results <small>FULL TIME</small></div><ul class="gl">${res.map((e) => gameLi(e, `<b>${esc(C.statusText(e))}</b> &middot; ${esc(C.dayName(C.kickoff(e), now, tz()))} &middot; ${esc(C.shortLeague(e.strLeague))}`)).join("")}</ul>`);
+      pages.push(`<div class="ph">Latest results <small>FULL TIME</small></div><ul class="gl">${res.map((e) => gameLi(e, `<b>${esc(C.statusText(e))}</b> &middot; ${esc(C.dayName(C.kickoff(e), now, tz()))} &middot; ${leagueBug(e)}${esc(C.shortLeague(e.strLeague))}`)).join("")}</ul>`);
       keys.push("results");
     }
     if (fix.length) {
@@ -1597,7 +2158,7 @@ table.lg tr.me td.gd { color: #fff; }
     }
     const tableHtml = (t) => {
       const rows = C.tableWindow(t.rows, t.mine, 8); // two tables to a page, as on the reference
-      return `<div class="ph">${esc(t.league)}${t.group ? ` <small>${esc(t.group.toUpperCase())}</small>` : ""}</div>
+      return `<div class="ph"><span>${bug(t.badge, "lgb", "")}${esc(t.league)}</span>${t.group ? ` <small>${esc(t.group.toUpperCase())}</small>` : ""}</div>
         <table class="lg"><colgroup><col style="width:36px"><col><col style="width:46px"><col style="width:48px"><col style="width:54px"></colgroup>
         <thead><tr><th></th><th></th><th>PLD</th><th>PTS</th><th>GD</th></tr></thead><tbody>
         ${rows.map((r) => {
@@ -1666,7 +2227,15 @@ table.lg tr.me td.gd { color: #fff; }
     if (!items.length) {
       run.innerHTML = `<span class="tk"><b>${esc(state.config.title || "CMHjem")}</b>Scores, fixtures and highlights</span>`;
     } else {
-      run.innerHTML = items.map((i) => `<span class="tk ${i.kind}"><b>${esc(i.label)}</b>${esc(i.text)}</span>`).join('<i class="sep"></i>') + '<i class="sep"></i>';
+      const body = (i) => {
+        if (i.kind === "result" && i.event && i.event.strLeagueBadge) return `${leagueBug(i.event, "tkb")}${esc(i.plain)}`;
+        if (i.kind === "next" && i.event) {
+          const tv = tvHtml(i.event);
+          if (tv) return `${esc(i.plain)}<span class="tktv">${tv}</span>`;
+        }
+        return esc(i.text);
+      };
+      run.innerHTML = items.map((i) => `<span class="tk ${i.kind}"><b>${esc(i.label)}</b>${body(i)}</span>`).join('<i class="sep"></i>') + '<i class="sep"></i>';
     }
     const from = track.clientWidth;
     const to = -run.scrollWidth;

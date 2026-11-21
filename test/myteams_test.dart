@@ -80,6 +80,20 @@ void main() {
       withYoutube,
     );
     expect(yt, isA<RssRoute>());
+    // and a channel of the "videos" list (a league's channel, or one that is no team's)
+    final withVideos = {
+      ...config,
+      'videos': [
+        {'name': 'SPFL', 'feed': 'https://www.youtube.com/feeds/videos.xml?channel_id=UCakRszbIjjGYtFrDPeg5Ieg', 'team': '133639'},
+      ],
+    };
+    final spfl = myTeamsRoute(
+      Uri.parse('http://127.0.0.1:$myTeamsPort/api/rss?u=${Uri.encodeComponent('https://www.youtube.com/feeds/videos.xml?channel_id=UCakRszbIjjGYtFrDPeg5Ieg')}'),
+      withVideos,
+    );
+    expect(spfl, isA<RssRoute>());
+    // the deeper search is the hosted copy's: here api/videos is not found, and the page reads the feed instead
+    expect((myTeamsRoute(Uri.parse('http://127.0.0.1:$myTeamsPort/api/videos?u=x'), withVideos) as RefusedRoute).status, 404);
   });
 
   test('answers are kept: live scores briefly, schedules minutes, lookups hours', () {

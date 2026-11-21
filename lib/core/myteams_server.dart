@@ -111,9 +111,12 @@ MyTeamsRoute myTeamsRoute(Uri uri, Map<String, dynamic> config) {
   if (path == '/api/rss') {
     final url = (uri.queryParameters['u'] ?? '').trim();
     final feeds = config['feeds'];
+    final videos = config['videos'];
     final teams = config['teams'];
-    // a news feed of the config, or a team's YouTube feed (given on the settings page); no other address
+    // a news feed of the config, or one of its YouTube channels' feeds (the "videos" list, or a team's single
+    // channel of before); no other address. Only the feed: the deeper channel search is the hosted copy's.
     final known = (feeds is List && feeds.any((f) => f is Map && '${f['url'] ?? ''}'.trim() == url)) ||
+        (videos is List && videos.any((v) => v is Map && '${v['feed'] ?? ''}'.trim() == url)) ||
         (teams is List && teams.any((t) => t is Map && '${t['youtubeFeed'] ?? ''}'.trim() == url));
     if (url.isEmpty || !known) return const RefusedRoute(403, 'not a feed in the config');
     return RssRoute(url);
