@@ -162,7 +162,7 @@ body { font-family: var(--font); -webkit-font-smoothing: antialiased; -webkit-us
 #clock .zones { font-size: 17px; font-weight: 700; color: var(--ice); margin-top: 6px; letter-spacing: 0.02em; }
 #brand { display: flex; align-items: center; gap: 0; padding: 14px 22px 4px; }
 #brand img.logo { height: 56px; width: auto; display: block; }
-#brand [hidden] { display: none; }
+#brand .chip[hidden], #brand img.logo[hidden] { display: none; } /* above #brand .chip's display, which won */
 #brand .chip { display: inline-flex; border-radius: var(--r-chip); overflow: hidden; }
 #brand .mark { background: var(--red); color: #fff; font-weight: 900; font-size: 22px; letter-spacing: 0.04em; padding: 6px 12px; }
 #brand .tv { background: #fff; color: var(--panel); font-weight: 900; font-size: 22px; letter-spacing: 0.08em; padding: 6px 10px; }
@@ -1294,6 +1294,14 @@ img.bug.ch { width: auto; height: 24px; margin-right: 6px; }
     const t = teamCfg(id);
     return (t && t.logo) || url || (t && t.badge) || "";
   };
+  /** A highlight's own logo when it has no badges (Mark, 21 Nov 2026: "if there are no teams logos ... it just shows my
+   * teams logo"): my team's in it, else its source's (a logo uploaded for a channel that is no team's), else the
+   * channel's own. */
+  const ownLogo = (h) => {
+    const mine = new Set((state.config.teams || []).map((t) => String(t.id)));
+    const id = h.club ? String(h.teamId || "") : [h.idHomeTeam, h.idAwayTeam].map(String).find((x) => mine.has(x)) || "";
+    return (id && logoOf(id, (state.teams.get(id) || {}).strBadge)) || h.srcLogo || "icon.png";
+  };
 
   /** The YouTube channels of the settings page. The server's api/videos reaches past a busy channel's latest 15
    * (Home Assistant and serve.py search the channel for the title rule); a server without it hands over the feed. */
@@ -1425,7 +1433,8 @@ img.bug.ch { width: auto; height: 24px; margin-right: 6px; }
         const cfg = (src.team && teamCfg(src.team)) || {};
         const name = (src.team && ((state.teams.get(String(src.team)) || {}).strTeam || cfg.name)) || src.name || "";
         const team = Object.assign({}, cfg, { id: src.team || "", name });
-        return C.clubVideos(state.clips.get(src.feed), team, evs, now, { days: Number(src.days) || days, max: 6, titles: src.titles || "" });
+        return C.clubVideos(state.clips.get(src.feed), team, evs, now, { days: Number(src.days) || days, max: 6, titles: src.titles || "" })
+          .map((h) => Object.assign(h, { srcLogo: src.logo || "" })); // the source's own logo, when one was uploaded
       })
       // a TV 2 summary plays only from the copy the house downloaded (there is no YouTube to fall back on)
       .filter((h) => !/^tv2-/.test(h.videoId) || state.media.has(h.videoId));
@@ -1572,7 +1581,7 @@ img.bug.ch { width: auto; height: 24px; margin-right: 6px; }
     if (h.club) {
       const info = state.teams.get(String(h.teamId)) || {};
       card.classList.add("single");
-      setBadge(home, logoOf(h.teamId, info.strBadge));
+      setBadge(home, ownLogo(h));
       $(".t", card).textContent = C.spoilerFree(h.title);
       $(".lb", card).innerHTML = "";
       sub = `${h.teamName}${h.published ? `  ·  ${C.longDay(h.published, tz())}` : ""}`;
@@ -1597,7 +1606,7 @@ img.bug.ch { width: auto; height: 24px; margin-right: 6px; }
   function drawLowerNext(h) {
     if (h.club) {
       const info = state.teams.get(String(h.teamId)) || {};
-      setLower(h.teamName, logoOf(h.teamId, info.strBadge), esc(C.spoilerFree(h.title)), "What's on next", null);
+      setLower(h.teamName, ownLogo(h), esc(C.spoilerFree(h.title)), "What's on next", null);
       return;
     }
     const v = (e, short) => `${esc(short ? C.shortName(e.strHomeTeam) : e.strHomeTeam)} v ${esc(short ? C.shortName(e.strAwayTeam) : e.strAwayTeam)}`;
@@ -1762,12 +1771,13 @@ img.bug.ch { width: auto; height: 24px; margin-right: 6px; }
       const fresh = !Number(plays[h.videoId]);
       let badges, title, sub;
       if (h.club) {
-        const info = state.teams.get(String(h.teamId)) || {};
-        badges = badge(logoOf(h.teamId, info.strBadge), "small");
+        badges = badge(ownLogo(h), "small");
         title = C.spoilerFree(h.title);
         sub = `${esc(h.teamName)}${h.published ? ` &middot; ${esc(C.dayName(h.published, new Date(), tz()))}` : ""}`;
       } else {
-        badges = `${badge(logoOf(h.idHomeTeam, h.strHomeTeamBadge), "small")}<span class="v">v</span>${badge(logoOf(h.idAwayTeam, h.strAwayTeamBadge), "small")}`;
+        const hb = logoOf(h.idHomeTeam, h.strHomeTeamBadge);
+        const ab = logoOf(h.idAwayTeam, h.strAwayTeamBadge);
+        badges = hb || ab ? `${badge(hb, "small")}<span class="v">v</span>${badge(ab, "small")}` : badge(ownLogo(h), "small");
         title = `${C.shortName(h.strHomeTeam)} v ${C.shortName(h.strAwayTeam)}`;
         sub = `${leagueBug(h)}${esc(C.shortLeague(h.strLeague))} &middot; ${esc(C.dayName(C.kickoff(h), new Date(), tz()))}`;
       }
@@ -2082,7 +2092,7 @@ img.bug.ch { width: auto; height: 24px; margin-right: 6px; }
   function drawLowerVideo(h) {
     if (h.club) {
       const info = state.teams.get(String(h.teamId)) || {};
-      setLower(h.teamName, logoOf(h.teamId, info.strBadge), esc(C.spoilerFree(h.title)), `Club video  \u00b7  ${C.longDay(h.published, tz())}`, null);
+      setLower(h.teamName, ownLogo(h), esc(C.spoilerFree(h.title)), `Club video  \u00b7  ${C.longDay(h.published, tz())}`, null);
       return;
     }
     const d = C.kickoff(h);
