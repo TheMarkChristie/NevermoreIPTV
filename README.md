@@ -20,6 +20,9 @@ every install starts with, and whatever sources you add.
 - **Watching:** Up / Down change channel, OK opens the guide, Back twice leaves. One stream at a time (a two-connection
   login is never filled by one TV), streams stop when the app leaves the screen, Xtream channels play as MPEG-TS
   (an HLS session held its connections for over a minute after changing channel).
+- **Switch-on:** a copy built with the house file's My Teams page opens on that channel when the TV switches on
+  (Back brings the last channel), and its Web category is the guide's first tab after All. Without it, the last
+  channel plays, as before.
 - **VPN:** a one-press button that sends only this app's traffic through a WireGuard tunnel, from any VPN's WireGuard
   file (added from a phone through a one-time page on the TV, or by the install script). It refuses a UK exit.
 
