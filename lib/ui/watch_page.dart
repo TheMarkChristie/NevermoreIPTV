@@ -104,25 +104,41 @@ class _WatchPageState extends State<WatchPage> {
     if (widget.notice != null) _showNotice(widget.notice!);
   }
 
-  /// The guide's Web category (the house file's sites), after the TV's own.
+  /// The guide's Web category (My Teams first, then the house file's sites), before the TV's own since 0.10.1 (Mark,
+  /// 21 Nov 2026: CMHjem TV "is the first tab").
   Category? _web;
 
-  /// The TV's categories with the Web one after them: one list object until either changes, because GuideView rebuilds
-  /// its grid whenever it is handed a different list (review, 24 Oct 2026).
+  /// Known once the Web category has been looked for, found or not: the switch-on waits for it (_startLast).
+  final _webLoaded = Completer<void>();
+
+  /// The switch-on's CMHjem TV has been opened (or there is none); the next start plays the last channel.
+  bool _teamsStarted = false;
+  bool _startingTeams = false;
+
+  /// The Web category first, then the TV's categories: one list object until either changes, because GuideView
+  /// rebuilds its grid whenever it is handed a different list (review, 24 Oct 2026).
   List<Category> _guideCategories = const [];
 
-  void _mergeCategories() => _guideCategories = [..._categories, ?_web];
+  void _mergeCategories() => _guideCategories = [?_web, ..._categories];
 
   /// The Web category at once, with the icons found on earlier starts; icons still missing arrive in the background.
   Future<void> _loadWeb() async {
-    // My Teams first when this copy carries it: the house's hosted copy, else the app's own (myteams_server.dart)
-    final teams = await myTeamsAddress();
-    final sites = [if (teams != null) WebSite(myTeamsName, teams), ...await loadSites()];
+    List<WebSite> sites;
+    try {
+      // My Teams first when this copy carries it: the house's hosted copy, else the app's own (myteams_server.dart)
+      final teams = await myTeamsAddress();
+      sites = [if (teams != null) WebSite(myTeamsName, teams), ...await loadSites()];
+      if (sites.isNotEmpty && mounted) {
+        setState(() {
+          _web = webCategory(sites, library.siteIcons);
+          _mergeCategories();
+        });
+      }
+    } finally {
+      // found or not, the switch-on can go on
+      if (!_webLoaded.isCompleted) _webLoaded.complete();
+    }
     if (sites.isEmpty || !mounted) return;
-    setState(() {
-      _web = webCategory(sites, library.siteIcons);
-      _mergeCategories();
-    });
     final found = await findSiteIcons(sites, library.siteIcons);
     if (found.isEmpty || !mounted) return;
     await library.setSiteIcons({...library.siteIcons, ...found});
@@ -218,7 +234,22 @@ class _WatchPageState extends State<WatchPage> {
   List<PlayableChannel>? _autoStart;
 
   Future<void> _startLast() async {
-    if (_all.isEmpty || _current != null) return;
+    if (_all.isEmpty || _current != null || _startingTeams) return;
+    // switched on: CMHjem TV first, when this copy carries My Teams (Mark, 21 Nov 2026: "make sure that the default
+    // channel is CMHJEM TV when it is switched on"); Back from it brings the last channel, through _leaveFor and
+    // this method again
+    if (!_teamsStarted) {
+      _teamsStarted = true;
+      _startingTeams = true;
+      await _webLoaded.future;
+      _startingTeams = false;
+      if (!mounted || _current != null || _away) return;
+      final teams = _web?.channels.where((c) => c.name == myTeamsName).firstOrNull;
+      if (teams != null) {
+        await _openSite(teams);
+        return;
+      }
+    }
     final last = _all.where((c) => c.uid == library.lastChannel).firstOrNull;
     if (last != null) {
       await _play(last);
