@@ -68,32 +68,23 @@ void main() {
     expect(ok.url, 'https://feeds.example/liverpool.xml');
     expect((route('/api/rss?u=${Uri.encodeComponent('http://192.168.1.1/')}') as RefusedRoute).status, 403);
     expect((route('/api/rss') as RefusedRoute).status, 403);
-    // a team's YouTube feed (given on the settings page) goes through too
+    // a YouTube channel's feed is no news feed: refused (the page asks nothing of YouTube; 0.99.10000)
     final withYoutube = {
       ...config,
       'teams': [
         {'id': '135345', 'name': 'Caledonia Gladiators', 'youtubeFeed': 'https://www.youtube.com/feeds/videos.xml?channel_id=UCx'},
       ],
-    };
-    final yt = myTeamsRoute(
-      Uri.parse('http://127.0.0.1:$myTeamsPort/api/rss?u=${Uri.encodeComponent('https://www.youtube.com/feeds/videos.xml?channel_id=UCx')}'),
-      withYoutube,
-    );
-    expect(yt, isA<RssRoute>());
-    // and a channel of the "videos" list (a league's channel, or one that is no team's)
-    final withVideos = {
-      ...config,
       'videos': [
-        {'name': 'SPFL', 'feed': 'https://www.youtube.com/feeds/videos.xml?channel_id=UCakRszbIjjGYtFrDPeg5Ieg', 'team': '133639'},
+        {'name': 'SPFL', 'feed': 'https://www.youtube.com/feeds/videos.xml?channel_id=UCy', 'team': '133639'},
       ],
     };
-    final spfl = myTeamsRoute(
-      Uri.parse('http://127.0.0.1:$myTeamsPort/api/rss?u=${Uri.encodeComponent('https://www.youtube.com/feeds/videos.xml?channel_id=UCakRszbIjjGYtFrDPeg5Ieg')}'),
-      withVideos,
-    );
-    expect(spfl, isA<RssRoute>());
-    // the deeper search is the hosted copy's: here api/videos is not found, and the page reads the feed instead
-    expect((myTeamsRoute(Uri.parse('http://127.0.0.1:$myTeamsPort/api/videos?u=x'), withVideos) as RefusedRoute).status, 404);
+    for (final feed in ['https://www.youtube.com/feeds/videos.xml?channel_id=UCx', 'https://www.youtube.com/feeds/videos.xml?channel_id=UCy']) {
+      final r = myTeamsRoute(Uri.parse('http://127.0.0.1:$myTeamsPort/api/rss?u=${Uri.encodeComponent(feed)}'), withYoutube);
+      expect((r as RefusedRoute).status, 403, reason: feed);
+    }
+    // no channel videos and no library here: both not found (the page then plays no highlights)
+    expect((myTeamsRoute(Uri.parse('http://127.0.0.1:$myTeamsPort/api/videos?u=x'), withYoutube) as RefusedRoute).status, 404);
+    expect((myTeamsRoute(Uri.parse('http://127.0.0.1:$myTeamsPort/api/media'), withYoutube) as RefusedRoute).status, 404);
   });
 
   test('answers are kept: live scores briefly, schedules minutes, lookups hours', () {

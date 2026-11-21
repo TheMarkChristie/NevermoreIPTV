@@ -11,8 +11,11 @@
 ///     GET /api/tsdb/v1/<call>      TheSportsDB v1 (lookuptable, lookupevent, eventsday only)
 ///     GET /api/rss?u=<address>     a feed the config names, and no other address
 ///
-/// Why a server and not a file: YouTube's player refuses a page with no web address (file:// sends no Referer), and the
-/// news feeds send no CORS header, so a page cannot read them itself. The server listens on 127.0.0.1 only, on one
+/// The page plays highlights only from a house's library of downloaded videos (its api/media), never from YouTube
+/// (Mark, 21 Nov 2026: "there should be no YouTube mode so remove that"). This built-in copy has no library, so it
+/// shows results, fixtures, tables and news; the highlights are on the copy a house hosts.
+///
+/// Why a server and not a file: the news feeds send no CORS header, so a page cannot read them itself. The server listens on 127.0.0.1 only, on one
 /// fixed port so the Web category's address (and the icon kept for it) stays the same from start to start.
 library;
 
@@ -111,13 +114,9 @@ MyTeamsRoute myTeamsRoute(Uri uri, Map<String, dynamic> config) {
   if (path == '/api/rss') {
     final url = (uri.queryParameters['u'] ?? '').trim();
     final feeds = config['feeds'];
-    final videos = config['videos'];
-    final teams = config['teams'];
-    // a news feed of the config, or one of its YouTube channels' feeds (the "videos" list, or a team's single
-    // channel of before); no other address. Only the feed: the deeper channel search is the hosted copy's.
-    final known = (feeds is List && feeds.any((f) => f is Map && '${f['url'] ?? ''}'.trim() == url)) ||
-        (videos is List && videos.any((v) => v is Map && '${v['feed'] ?? ''}'.trim() == url)) ||
-        (teams is List && teams.any((t) => t is Map && '${t['youtubeFeed'] ?? ''}'.trim() == url));
+    // a news feed of the config and no other address (a YouTube channel's feed neither: the page asks nothing of
+    // YouTube since 0.99.10000)
+    final known = feeds is List && feeds.any((f) => f is Map && '${f['url'] ?? ''}'.trim() == url);
     if (url.isEmpty || !known) return const RefusedRoute(403, 'not a feed in the config');
     return RssRoute(url);
   }
